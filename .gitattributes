@@ -1,0 +1,2 @@
+data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl filter=lfs diff=lfs merge=lfs -text
+artifacts/bm25_legal_*/bm25_model.joblib filter=lfs diff=lfs merge=lfs -text

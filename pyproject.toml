@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ir-search"
+version = "0.1.0"
+description = "Simple information retrieval system with TF-IDF, cosine similarity, and top-k ranking."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "joblib>=1.4.2",
+  "numpy>=1.26.4",
+  "scikit-learn>=1.5.1",
+  "streamlit>=1.37.0",
+]
+
+[project.scripts]
+ir-search = "cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

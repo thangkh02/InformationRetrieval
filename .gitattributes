@@ -1,0 +1,1 @@
+data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl filter=lfs diff=lfs merge=lfs -text

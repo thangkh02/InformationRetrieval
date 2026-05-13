@@ -41,6 +41,14 @@ def build_parser() -> argparse.ArgumentParser:
     build_bge_parser.add_argument("--model-name", default="BAAI/bge-m3", help="Hugging Face model name")
     build_bge_parser.add_argument("--batch-size", type=int, default=8, help="Encoding batch size")
     build_bge_parser.add_argument("--max-length", type=int, default=1024, help="Maximum token length")
+    build_bge_parser.add_argument(
+        "--index-type",
+        default="flat",
+        choices=["flat", "ivf_flat"],
+        help="FAISS index type to build",
+    )
+    build_bge_parser.add_argument("--nlist", type=int, default=100, help="IVF cluster count")
+    build_bge_parser.add_argument("--nprobe", type=int, default=10, help="IVF probe count")
     build_bge_parser.add_argument("--device", default=None, help="Device to use, e.g. cuda, cuda:0, or cpu")
 
     search_parser = subparsers.add_parser("search", help="Search with cosine similarity")
@@ -121,6 +129,9 @@ def main() -> None:
             batch_size=args.batch_size,
             max_length=args.max_length,
             device=args.device,
+            index_type=args.index_type,
+            nlist=args.nlist,
+            nprobe=args.nprobe,
         )
         engine.fit(docs)
         engine.save(args.model_dir)

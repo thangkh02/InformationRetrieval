@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 import re
-import unicodedata
 
-_NON_ALNUM_RE = re.compile(r"[^0-9a-z\s]+")
+_NON_ALNUM_RE = re.compile(r"[^\w\s]+", re.UNICODE)
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
 def normalize_text(text: str) -> str:
-    text = text.lower().replace("đ", "d")
-    text = unicodedata.normalize("NFKD", text)
-    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = text.lower()
     text = _NON_ALNUM_RE.sub(" ", text)
+    text = text.replace("_", " ")
     text = _WHITESPACE_RE.sub(" ", text).strip()
     return text
 
@@ -21,3 +19,18 @@ def tokenize_text(text: str) -> list[str]:
     if not normalized:
         return []
     return normalized.split()
+
+
+def prepare_phobert_text(text: str) -> str:
+    text = text.lower().strip()
+    text = _WHITESPACE_RE.sub(" ", text)
+
+    try:
+        from underthesea import word_tokenize
+
+        text = word_tokenize(text, format="text")
+    except Exception:
+        pass
+
+    text = _WHITESPACE_RE.sub(" ", text).strip()
+    return text

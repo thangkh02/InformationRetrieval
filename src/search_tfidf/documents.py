@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 @dataclass(slots=True)
 class NewsDocument:
-    doc_id: int
+    doc_id: str | int
     title: str
     summary: str
     category: str
@@ -19,10 +19,9 @@ class NewsDocument:
 
 @dataclass(slots=True)
 class SearchResult:
-    doc_id: int
+    doc_id: str | int
     score: float
     title: str
     summary: str
     category: str
     content: str
-

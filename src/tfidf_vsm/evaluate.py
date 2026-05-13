@@ -14,21 +14,27 @@ def evaluate_recall_mrr(
     log_every: int = 100,
     progress_callback: Callable[[int, int, int, float], None] | None = None,
 ) -> tuple[int, float, float]:
-    queries = load_queries_jsonl(queries_path)
+    raw_queries = load_queries_jsonl(queries_path)
     qrels = load_qrels_jsonl(qrels_path)
-    total_candidates = sum(1 for q in queries if q.query_id in qrels)
+    # Deduplicate queries by id and keep the first text occurrence.
+    query_map: dict[str, str] = {}
+    for q in raw_queries:
+        if q.query_id not in query_map:
+            query_map[q.query_id] = q.text
+
+    # Evaluate strictly on query ids present in qrels.
+    eval_ids = [qid for qid in qrels.keys() if qid in query_map]
+    total_candidates = len(eval_ids)
 
     total = 0
     hits = 0
     mrr_sum = 0.0
 
-    for q in queries:
-        rel_docs = qrels.get(q.query_id)
-        if not rel_docs:
-            continue
-
+    for qid in eval_ids:
+        rel_docs = qrels[qid]
+        q_text = query_map[qid]
         total += 1
-        results = engine.search(q.text, top_k=k)
+        results = engine.search(q_text, top_k=k)
 
         first_rank = 0
         for rank, row in enumerate(results, start=1):

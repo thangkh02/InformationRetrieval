@@ -1,0 +1,2 @@
+[console_scripts]
+ir-search = cli:main

@@ -2,9 +2,9 @@
 
 import argparse
 
-from zalo_tfidf_vsm.engine import ZaloTfidfVSMEngine
-from zalo_tfidf_vsm.evaluate import evaluate_recall_mrr
-from zalo_tfidf_vsm.io import load_corpus_jsonl
+from tfidf_vsm.engine import ZaloTfidfVSMEngine
+from tfidf_vsm.evaluate import evaluate_recall_mrr
+from tfidf_vsm.io import load_corpus_jsonl
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -41,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_bge_parser.add_argument("--model-name", default="BAAI/bge-m3", help="Hugging Face model name")
     build_bge_parser.add_argument("--batch-size", type=int, default=8, help="Encoding batch size")
     build_bge_parser.add_argument("--max-length", type=int, default=1024, help="Maximum token length")
+    build_bge_parser.add_argument("--device", default=None, help="Device to use, e.g. cuda, cuda:0, or cpu")
 
     search_parser = subparsers.add_parser("search", help="Search with cosine similarity")
     search_parser.add_argument("--model-dir", required=True, help="Model directory")
@@ -61,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     search_bge_parser.add_argument("--model-dir", required=True, help="Model directory")
     search_bge_parser.add_argument("--query", required=True, help="Search query")
     search_bge_parser.add_argument("--top-k", type=int, default=5, help="Number of results to return")
+    search_bge_parser.add_argument("--device", default=None, help="Device to use, e.g. cuda, cuda:0, or cpu")
 
     return parser
 
@@ -118,6 +120,7 @@ def main() -> None:
             model_name=args.model_name,
             batch_size=args.batch_size,
             max_length=args.max_length,
+            device=args.device,
         )
         engine.fit(docs)
         engine.save(args.model_dir)
@@ -188,7 +191,7 @@ def main() -> None:
         return
 
     if args.command == "search-bge":
-        engine = BGEM3SearchEngine.load(args.model_dir)
+        engine = BGEM3SearchEngine.load(args.model_dir, device=args.device)
         results = engine.search(args.query, top_k=args.top_k)
         _print_results(results)
         if results:

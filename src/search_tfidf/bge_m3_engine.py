@@ -111,7 +111,18 @@ class BGEM3SearchEngine:
             max_length=payload["max_length"],
             device=device,
         )
-        engine.documents = payload["documents"]
+        engine.documents = [
+            doc
+            if isinstance(doc, NewsDocument)
+            else NewsDocument(
+                doc_id=doc.get("doc_id", doc.get("_id", "")),
+                title=str(doc.get("title", "")),
+                summary=str(doc.get("summary", "")),
+                category=str(doc.get("category", "")),
+                content=str(doc.get("content", doc.get("text", ""))),
+            )
+            for doc in payload["documents"]
+        ]
         engine.embeddings = np.load(path / "bge_m3_embeddings.npy")
         engine.index = faiss.read_index(str(path / "bge_m3.index"))
         return engine

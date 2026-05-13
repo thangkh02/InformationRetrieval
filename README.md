@@ -1,85 +1,177 @@
-# IR Search
+# Information Retrieval - Vietnamese Legal Search
 
-Project tim kiem thong tin don gian, tap trung vao TF-IDF top-k.
+Project truy xuat thong tin tren bo du lieu Zalo AI Legal Text Retrieval VN.
+Huong chay hien tai la dense retrieval voi BGE-M3 + FAISS tren full corpus.
 
-## Cau truc du an
+## Cau truc chinh
 
 ```text
 .
 ├── app.py
+├── embed_bge.py
+├── evaluate_bge_20k.py
 ├── data/
-│   └── news_sample.jsonl
+│   └── zalo_ai_legal_text_retrieval_vn/
+│       ├── corpus.jsonl
+│       ├── queries.jsonl
+│       ├── queries_unique.jsonl
+│       └── qrels/
+│           ├── train.jsonl
+│           └── test.jsonl
 ├── artifacts/
-│   └── model/
+│   ├── bge_m3_legal_full/
+│   └── bge_m3_queries_full/
 ├── pyproject.toml
 └── src/
     ├── cli.py
     └── search_tfidf/
-        ├── __init__.py
+        ├── bge_m3_engine.py
+        ├── bm25_engine.py
         ├── documents.py
         ├── engine.py
-        └── io.py
+        ├── io.py
+        └── text_utils.py
 ```
 
-## Mo ta tung file
+## Du lieu
 
-- `app.py`: giao dien Streamlit de nhap query va xem ket qua top-k.
-- `src/cli.py`: lenh command line de build model va search, bao gom TF-IDF va BM25.
-- `src/search_tfidf/__init__.py`: gom export cac thanh phan chinh cua module search.
-- `src/search_tfidf/documents.py`: dinh nghia model du lieu `NewsDocument` va `SearchResult`.
-- `src/search_tfidf/io.py`: doc/ghi du lieu JSONL.
-- `src/search_tfidf/engine.py`: logic TF-IDF, cosine similarity, va xep hang top-k.
-- `src/search_tfidf/bm25_engine.py`: BM25 retrieval co chuan hoa text va top-k ranking.
-- `src/search_tfidf/text_utils.py`: chuan hoa text chung cho lowercasing, bo dau va loai ky tu dac biet.
-- `data/news_sample.jsonl`: tap 10k ban ghi da lay mau tu dataset goc.
-- `artifacts/model/`: noi luu model TF-IDF sau khi build.
+- `corpus.jsonl`: full legal corpus, 61,425 documents.
+- `queries.jsonl`: query goc, co mot so query id bi lap.
+- `queries_unique.jsonl`: query da loai trung theo `_id`, dung de embed/evaluate.
+- `qrels/train.jsonl`: relevance labels train.
+- `qrels/test.jsonl`: relevance labels test.
 
-## Pham vi hien tai
+## Cai dat
 
-- Xay TF-IDF index tu `data/news_sample.jsonl`
-- Tim kiem bang cosine similarity
-- Tra ve top-k ket qua
-- Hien thi ket qua qua Streamlit hoac CLI
+```bash
+cd  InformationRetrieval
+pip install -r requirements.txt
+```
 
-## Chay project
+Neu chay trong moi truong editable package:
 
 ```bash
 pip install -e .
-streamlit run app.py
 ```
 
-## Chay CLI
+## Embed Full Corpus Bang BGE-M3
+
+Script don gian de embed corpus:
 
 ```bash
-ir-search build --input data/news_sample.jsonl --model-dir artifacts/model
-ir-search search --model-dir artifacts/model --query "kinh te Viet Nam" --top-k 5
-ir-search build-bm25 --input data/news_sample.jsonl --model-dir artifacts/model
-ir-search search-bm25 --model-dir artifacts/model --query "kinh te Viet Nam" --top-k 5
-```
-
-## Build vector index BGE-M3 cho legal corpus
-
-```bash
-PYTHONPATH=src python -m cli build-bge \
+cd /kaggle/InformationRetrieval && python embed_bge.py \
   --input data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl \
-  --model-dir artifacts/bge_m3_legal \
-  --batch-size 4 \
-  --max-length 1024
+  --output-dir artifacts/bge_m3_legal_full \
+  --batch-size 32 \
+  --max-length 1024 \
+  --device cuda \
+  --fp16
 ```
 
-Sau khi build xong, vector va FAISS index se nam trong:
+Output:
 
 ```text
-artifacts/bge_m3_legal/bge_m3.index
-artifacts/bge_m3_legal/bge_m3_embeddings.npy
-artifacts/bge_m3_legal/bge_m3_meta.joblib
+artifacts/bge_m3_legal_full/bge_m3.index
+artifacts/bge_m3_legal_full/bge_m3_embeddings.npy
+artifacts/bge_m3_legal_full/bge_m3_meta.joblib
 ```
 
-Search bang BGE-M3:
+Ghi chu:
+
+- BGE-M3 ho tro context toi khoang 8192 token.
+- `--max-length 1024` nhanh va hop ly de thu nghiem full corpus.
+- Neu GPU du VRAM, co the thu `--max-length 2048` hoac `4096`.
+- Neu bi out-of-memory, giam `--batch-size 16` hoac `--batch-size 8`.
+- `--fp16` giup giam VRAM va thuong nhanh hon tren CUDA.
+
+## Embed Queries
+
+Dung file query unique de tranh embed lap query:
 
 ```bash
-PYTHONPATH=src python -m cli search-bge \
-  --model-dir artifacts/bge_m3_legal \
+cd /kaggle/InformationRetrieval && python embed_bge.py \
+  --input data/zalo_ai_legal_text_retrieval_vn/queries_unique.jsonl \
+  --output-dir artifacts/bge_m3_queries_full \
+  --batch-size 32 \
+  --max-length 256 \
+  --device cuda \
+  --fp16
+```
+
+Output:
+
+```text
+artifacts/bge_m3_queries_full/bge_m3.index
+artifacts/bge_m3_queries_full/bge_m3_embeddings.npy
+artifacts/bge_m3_queries_full/bge_m3_meta.joblib
+```
+
+## Evaluate Retrieval
+
+Evaluate tren test set:
+
+```bash
+cd /kaggle/InformationRetrieval && python evaluate_bge_20k.py \
+  --corpus-dir artifacts/bge_m3_legal_full \
+  --query-dir artifacts/bge_m3_queries_full \
+  --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/test.jsonl
+```
+
+Evaluate tren train set:
+
+```bash
+cd /kaggle/InformationRetrieval && python evaluate_bge_20k.py \
+  --corpus-dir artifacts/bge_m3_legal_full \
+  --query-dir artifacts/bge_m3_queries_full \
+  --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/train.jsonl
+```
+
+Mac dinh script tinh:
+
+```text
+Recall@1,3,5,10,20,50,100
+Hit@1,3,5,10,20,50,100
+MRR@1,3,5,10,20,50,100
+nDCG@1,3,5,10,20,50,100
+```
+
+## Search Mot Query
+
+Neu da co index full corpus, co the search bang CLI:
+
+```bash
+cd /kaggle/InformationRetrieval && PYTHONPATH=src python -m cli search-bge \
+  --model-dir artifacts/bge_m3_legal_full \
   --query "Công an xã xử phạt lỗi không mang bằng lái xe có đúng không?" \
-  --top-k 5
+  --top-k 5 \
+  --device cuda
+```
+
+## Baseline TF-IDF/BM25
+
+Code baseline van nam trong:
+
+- `src/search_tfidf/engine.py`: TF-IDF + cosine similarity.
+- `src/search_tfidf/bm25_engine.py`: BM25.
+
+Neu can build baseline tren legal corpus:
+
+```bash
+PYTHONPATH=src python -m cli build-bm25 \
+  --input data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl \
+  --model-dir artifacts/bm25_legal_full
+```
+
+## Luu Y Ve Git
+
+Khong nen commit cac file trong `artifacts/` len GitHub vi embedding/index rat lon.
+GitHub chan file tren 100MB. Hay de artifacts o local/Kaggle output, hoac dung Git LFS neu that su can versioning artifact.
+
+Nen ignore cac artifact sinh ra:
+
+```gitignore
+artifacts/bge_m3_*/
+*.npy
+*.index
+*.joblib
 ```

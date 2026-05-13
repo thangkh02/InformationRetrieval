@@ -4,7 +4,13 @@ import argparse
 import json
 from textwrap import shorten
 
-from search_tfidf import BM25SearchEngine, PhoBERTSearchEngine, TfidfSearchEngine, read_jsonl
+from search_tfidf import (
+    BGEM3SearchEngine,
+    BM25SearchEngine,
+    PhoBERTSearchEngine,
+    TfidfSearchEngine,
+    read_jsonl,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +35,13 @@ def build_parser() -> argparse.ArgumentParser:
     build_phobert_parser.add_argument("--batch-size", type=int, default=16, help="Encoding batch size")
     build_phobert_parser.add_argument("--max-length", type=int, default=256, help="Maximum token length")
 
+    build_bge_parser = subparsers.add_parser("build-bge", help="Build BGE-M3 vector index")
+    build_bge_parser.add_argument("--input", required=True, help="Input JSONL path")
+    build_bge_parser.add_argument("--model-dir", required=True, help="Directory to store model artifacts")
+    build_bge_parser.add_argument("--model-name", default="BAAI/bge-m3", help="Hugging Face model name")
+    build_bge_parser.add_argument("--batch-size", type=int, default=8, help="Encoding batch size")
+    build_bge_parser.add_argument("--max-length", type=int, default=1024, help="Maximum token length")
+
     search_parser = subparsers.add_parser("search", help="Search with cosine similarity")
     search_parser.add_argument("--model-dir", required=True, help="Model directory")
     search_parser.add_argument("--query", required=True, help="Search query")
@@ -43,6 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
     search_phobert_parser.add_argument("--model-dir", required=True, help="Model directory")
     search_phobert_parser.add_argument("--query", required=True, help="Search query")
     search_phobert_parser.add_argument("--top-k", type=int, default=5, help="Number of results to return")
+
+    search_bge_parser = subparsers.add_parser("search-bge", help="Search with BGE-M3 embeddings")
+    search_bge_parser.add_argument("--model-dir", required=True, help="Model directory")
+    search_bge_parser.add_argument("--query", required=True, help="Search query")
+    search_bge_parser.add_argument("--top-k", type=int, default=5, help="Number of results to return")
 
     return parser
 
@@ -94,6 +112,18 @@ def main() -> None:
         print(f"Built PhoBERT vector index for {len(docs)} documents at {args.model_dir}")
         return
 
+    if args.command == "build-bge":
+        docs = read_jsonl(args.input)
+        engine = BGEM3SearchEngine(
+            model_name=args.model_name,
+            batch_size=args.batch_size,
+            max_length=args.max_length,
+        )
+        engine.fit(docs)
+        engine.save(args.model_dir)
+        print(f"Built BGE-M3 vector index for {len(docs)} documents at {args.model_dir}")
+        return
+
     if args.command == "search":
         engine = TfidfSearchEngine.load(args.model_dir)
         results = engine.search(args.query, top_k=args.top_k)
@@ -138,6 +168,27 @@ def main() -> None:
 
     if args.command == "search-phobert":
         engine = PhoBERTSearchEngine.load(args.model_dir)
+        results = engine.search(args.query, top_k=args.top_k)
+        _print_results(results)
+        if results:
+            print("Top result JSON:")
+            print(
+                json.dumps(
+                    {
+                        "doc_id": results[0].doc_id,
+                        "score": results[0].score,
+                        "title": results[0].title,
+                        "summary": results[0].summary,
+                        "category": results[0].category,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        return
+
+    if args.command == "search-bge":
+        engine = BGEM3SearchEngine.load(args.model_dir)
         results = engine.search(args.query, top_k=args.top_k)
         _print_results(results)
         if results:

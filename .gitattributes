@@ -1,3 +1,5 @@
 data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl filter=lfs diff=lfs merge=lfs -text
+artifacts/bge_m3_legal_full/* filter=lfs diff=lfs merge=lfs -text
+artifacts/bge_m3_queries_full/* filter=lfs diff=lfs merge=lfs -text
 artifacts/bm25_underthesea/corpus_doc_id.jsonl filter=lfs diff=lfs merge=lfs -text
 artifacts/bm25_legal_*/bm25_model.joblib filter=lfs diff=lfs merge=lfs -text

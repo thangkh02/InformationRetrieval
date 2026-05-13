@@ -1,4 +1,5 @@
 from .documents import NewsDocument, SearchResult
+from .bge_m3_engine import BGEM3SearchEngine
 from .bm25_engine import BM25SearchEngine
 from .engine import TfidfSearchEngine
 from .phobert_engine import PhoBERTSearchEngine
@@ -6,6 +7,7 @@ from .io import read_jsonl, write_jsonl
 from .text_utils import normalize_text, prepare_phobert_text, tokenize_text
 
 __all__ = [
+    "BGEM3SearchEngine",
     "BM25SearchEngine",
     "NewsDocument",
     "PhoBERTSearchEngine",

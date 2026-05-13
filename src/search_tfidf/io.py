@@ -23,14 +23,17 @@ def read_jsonl(input_path: str | Path) -> list[NewsDocument]:
             if not line.strip():
                 continue
             item = json.loads(line)
+            doc_id = item.get("doc_id", item.get("_id"))
+            if doc_id is None:
+                raise KeyError("Input JSONL must contain either 'doc_id' or '_id'.")
+            text = str(item.get("content", item.get("text", "")))
             docs.append(
                 NewsDocument(
-                    doc_id=int(item["doc_id"]),
+                    doc_id=doc_id,
                     title=str(item.get("title", "")),
                     summary=str(item.get("summary", "")),
                     category=str(item.get("category", "")),
-                    content=str(item.get("content", "")),
+                    content=text,
                 )
             )
     return docs
-

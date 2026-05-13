@@ -56,3 +56,30 @@ ir-search search --model-dir artifacts/model --query "kinh te Viet Nam" --top-k 
 ir-search build-bm25 --input data/news_sample.jsonl --model-dir artifacts/model
 ir-search search-bm25 --model-dir artifacts/model --query "kinh te Viet Nam" --top-k 5
 ```
+
+## Build vector index BGE-M3 cho legal corpus
+
+```bash
+PYTHONPATH=src python -m cli build-bge \
+  --input data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl \
+  --model-dir artifacts/bge_m3_legal \
+  --batch-size 4 \
+  --max-length 1024
+```
+
+Sau khi build xong, vector va FAISS index se nam trong:
+
+```text
+artifacts/bge_m3_legal/bge_m3.index
+artifacts/bge_m3_legal/bge_m3_embeddings.npy
+artifacts/bge_m3_legal/bge_m3_meta.joblib
+```
+
+Search bang BGE-M3:
+
+```bash
+PYTHONPATH=src python -m cli search-bge \
+  --model-dir artifacts/bge_m3_legal \
+  --query "Công an xã xử phạt lỗi không mang bằng lái xe có đúng không?" \
+  --top-k 5
+```

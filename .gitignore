@@ -4,4 +4,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
+artifacts/zalo_tfidf_vsm/
+run_zalo_tfidf_vsm.py
+README_zalo_tfidf_vsm.md
 

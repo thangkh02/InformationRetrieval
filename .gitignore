@@ -8,3 +8,5 @@ artifacts/zalo_tfidf_vsm/
 run_zalo_tfidf_vsm.py
 README_zalo_tfidf_vsm.md
 
+
+artifacts/tfidf_vsm/

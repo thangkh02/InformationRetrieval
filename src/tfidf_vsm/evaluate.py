@@ -2,12 +2,12 @@
 
 from collections.abc import Callable
 
-from .engine import ZaloTfidfVSMEngine
+from .engine import TfidfVSMEngine
 from .io import load_qrels_jsonl, load_queries_jsonl
 
 
 def evaluate_recall_mrr(
-    engine: ZaloTfidfVSMEngine,
+    engine: TfidfVSMEngine,
     queries_path: str,
     qrels_path: str,
     k: int = 10,
@@ -55,3 +55,4 @@ def evaluate_recall_mrr(
         raise ValueError("No query matched qrels.")
 
     return total, hits / total, mrr_sum / total
+

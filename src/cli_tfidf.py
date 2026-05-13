@@ -2,13 +2,13 @@
 
 import argparse
 
-from tfidf_vsm.engine import ZaloTfidfVSMEngine
+from tfidf_vsm.engine import TfidfVSMEngine
 from tfidf_vsm.evaluate import evaluate_recall_mrr
 from tfidf_vsm.io import load_corpus_jsonl
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Zalo TF-IDF + Vector Space Model")
+    parser = argparse.ArgumentParser(description="TF-IDF + Vector Space Model")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_build = sub.add_parser("build")
@@ -35,14 +35,14 @@ def main() -> None:
 
     if args.command == "build":
         docs = load_corpus_jsonl(args.corpus)
-        engine = ZaloTfidfVSMEngine(min_df=1)
+        engine = TfidfVSMEngine(min_df=1)
         engine.fit(docs)
         engine.save(args.model_dir)
         print(f"Built index for {len(docs)} docs -> {args.model_dir}")
         return
 
     if args.command == "search":
-        engine = ZaloTfidfVSMEngine.load(args.model_dir)
+        engine = TfidfVSMEngine.load(args.model_dir)
         rows = engine.search(args.query, top_k=args.top_k)
         for i, r in enumerate(rows, start=1):
             print(f"{i}. score={r.score:.6f} | id={r.doc_id}")
@@ -50,7 +50,7 @@ def main() -> None:
         return
 
     if args.command == "eval":
-        engine = ZaloTfidfVSMEngine.load(args.model_dir)
+        engine = TfidfVSMEngine.load(args.model_dir)
 
         def on_progress(done: int, total: int, hits: int, running_recall: float) -> None:
             print(f"[eval] {done}/{total} queries | hits={hits} | running_recall@{args.k}={running_recall:.4f}")
@@ -70,3 +70,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

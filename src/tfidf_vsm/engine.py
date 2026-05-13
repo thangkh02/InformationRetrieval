@@ -8,16 +8,16 @@ from pathlib import Path
 
 import joblib
 
-from .documents import ZaloDocument, ZaloResult
+from .documents import Document, SearchResult
 
 
-class ZaloTfidfVSMEngine:
+class TfidfVSMEngine:
     def __init__(self, max_features: int = 200_000, ngram_range: tuple[int, int] = (1, 2), min_df: int = 1) -> None:
         self.max_features = max_features
         self.ngram_range = ngram_range
         self.min_df = min_df
 
-        self.documents: list[ZaloDocument] = []
+        self.documents: list[Document] = []
         self.vocab: dict[str, int] = {}
         self.idf: list[float] = []
         self.doc_vectors: list[dict[int, float]] = []
@@ -55,7 +55,7 @@ class ZaloTfidfVSMEngine:
     def _l2_norm(vec: dict[int, float]) -> float:
         return math.sqrt(sum(v * v for v in vec.values()))
 
-    def fit(self, documents: list[ZaloDocument]) -> None:
+    def fit(self, documents: list[Document]) -> None:
         if not documents:
             raise ValueError("No documents provided.")
 
@@ -104,7 +104,7 @@ class ZaloTfidfVSMEngine:
 
         self.inverted_index = dict(postings)
 
-    def search(self, query: str, top_k: int = 10) -> list[ZaloResult]:
+    def search(self, query: str, top_k: int = 10) -> list[SearchResult]:
         if not self.doc_vectors:
             raise RuntimeError("Engine is not fitted.")
         if not query.strip():
@@ -149,7 +149,7 @@ class ZaloTfidfVSMEngine:
         top_hits = scored[: min(top_k, len(scored))]
 
         return [
-            ZaloResult(
+            SearchResult(
                 doc_id=self.documents[doc_idx].doc_id,
                 score=float(score),
                 title=self.documents[doc_idx].title,
@@ -176,12 +176,12 @@ class ZaloTfidfVSMEngine:
                 "doc_norms": self.doc_norms,
                 "inverted_index": self.inverted_index,
             },
-            out / "zalo_tfidf_vsm.joblib",
+            out / "tfidf_vsm.joblib",
         )
 
     @classmethod
-    def load(cls, model_dir: str | Path) -> "ZaloTfidfVSMEngine":
-        payload = joblib.load(Path(model_dir) / "zalo_tfidf_vsm.joblib")
+    def load(cls, model_dir: str | Path) -> "TfidfVSMEngine":
+        payload = joblib.load(Path(model_dir) / "tfidf_vsm.joblib")
         engine = cls(
             max_features=payload.get("max_features", 200_000),
             ngram_range=tuple(payload.get("ngram_range", (1, 2))),
@@ -194,3 +194,4 @@ class ZaloTfidfVSMEngine:
         engine.doc_norms = payload["doc_norms"]
         engine.inverted_index = payload["inverted_index"]
         return engine
+

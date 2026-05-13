@@ -3,11 +3,11 @@
 import json
 from pathlib import Path
 
-from .documents import ZaloDocument, ZaloQuery
+from .documents import Document, Query
 
 
-def load_corpus_jsonl(path: str | Path) -> list[ZaloDocument]:
-    docs: list[ZaloDocument] = []
+def load_corpus_jsonl(path: str | Path) -> list[Document]:
+    docs: list[Document] = []
     with Path(path).open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -19,12 +19,12 @@ def load_corpus_jsonl(path: str | Path) -> list[ZaloDocument]:
             content = str(row.get("text", row.get("content", "")))
             if not doc_id:
                 continue
-            docs.append(ZaloDocument(doc_id=doc_id, title=title, content=content))
+            docs.append(Document(doc_id=doc_id, title=title, content=content))
     return docs
 
 
-def load_queries_jsonl(path: str | Path) -> list[ZaloQuery]:
-    queries: list[ZaloQuery] = []
+def load_queries_jsonl(path: str | Path) -> list[Query]:
+    queries: list[Query] = []
     with Path(path).open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -35,7 +35,7 @@ def load_queries_jsonl(path: str | Path) -> list[ZaloQuery]:
             text = str(row.get("text", "")).strip()
             if not query_id or not text:
                 continue
-            queries.append(ZaloQuery(query_id=query_id, text=text))
+            queries.append(Query(query_id=query_id, text=text))
     return queries
 
 
@@ -56,3 +56,4 @@ def load_qrels_jsonl(path: str | Path) -> dict[str, set[str]]:
                 qrels[query_id] = set()
             qrels[query_id].add(corpus_id)
     return qrels
+

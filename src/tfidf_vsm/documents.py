@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 @dataclass(slots=True)
-class ZaloDocument:
+class Document:
     doc_id: str
     title: str
     content: str
@@ -16,14 +16,15 @@ class ZaloDocument:
 
 
 @dataclass(slots=True)
-class ZaloQuery:
+class Query:
     query_id: str
     text: str
 
 
 @dataclass(slots=True)
-class ZaloResult:
+class SearchResult:
     doc_id: str
     score: float
     title: str
     content: str
+

@@ -4,7 +4,7 @@ import argparse
 import json
 from textwrap import shorten
 
-from search_tfidf import TfidfSearchEngine, read_jsonl
+from search_tfidf import BM25SearchEngine, TfidfSearchEngine, read_jsonl
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,10 +18,19 @@ def build_parser() -> argparse.ArgumentParser:
     build_parser.add_argument("--input", required=True, help="Input JSONL path")
     build_parser.add_argument("--model-dir", required=True, help="Directory to store model artifacts")
 
+    build_bm25_parser = subparsers.add_parser("build-bm25", help="Build BM25 index")
+    build_bm25_parser.add_argument("--input", required=True, help="Input JSONL path")
+    build_bm25_parser.add_argument("--model-dir", required=True, help="Directory to store model artifacts")
+
     search_parser = subparsers.add_parser("search", help="Search with cosine similarity")
     search_parser.add_argument("--model-dir", required=True, help="Model directory")
     search_parser.add_argument("--query", required=True, help="Search query")
     search_parser.add_argument("--top-k", type=int, default=5, help="Number of results to return")
+
+    search_bm25_parser = subparsers.add_parser("search-bm25", help="Search with BM25")
+    search_bm25_parser.add_argument("--model-dir", required=True, help="Model directory")
+    search_bm25_parser.add_argument("--query", required=True, help="Search query")
+    search_bm25_parser.add_argument("--top-k", type=int, default=5, help="Number of results to return")
 
     return parser
 
@@ -53,8 +62,37 @@ def main() -> None:
         print(f"Built index for {len(docs)} documents at {args.model_dir}")
         return
 
+    if args.command == "build-bm25":
+        docs = read_jsonl(args.input)
+        engine = BM25SearchEngine()
+        engine.fit(docs)
+        engine.save(args.model_dir)
+        print(f"Built BM25 index for {len(docs)} documents at {args.model_dir}")
+        return
+
     if args.command == "search":
         engine = TfidfSearchEngine.load(args.model_dir)
+        results = engine.search(args.query, top_k=args.top_k)
+        _print_results(results)
+        if results:
+            print("Top result JSON:")
+            print(
+                json.dumps(
+                    {
+                        "doc_id": results[0].doc_id,
+                        "score": results[0].score,
+                        "title": results[0].title,
+                        "summary": results[0].summary,
+                        "category": results[0].category,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        return
+
+    if args.command == "search-bm25":
+        engine = BM25SearchEngine.load(args.model_dir)
         results = engine.search(args.query, top_k=args.top_k)
         _print_results(results)
         if results:
@@ -77,4 +115,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

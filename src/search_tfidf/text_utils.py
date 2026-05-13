@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 _NON_ALNUM_RE = re.compile(r"[^\w\s]+", re.UNICODE)
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -26,7 +27,7 @@ def prepare_phobert_text(text: str) -> str:
     text = _WHITESPACE_RE.sub(" ", text)
 
     try:
-        from underthesea import word_tokenize
+        from underthesea.pipeline.word_tokenize import word_tokenize
 
         text = word_tokenize(text, format="text")
     except Exception:
@@ -34,3 +35,23 @@ def prepare_phobert_text(text: str) -> str:
 
     text = _WHITESPACE_RE.sub(" ", text).strip()
     return text
+
+
+@lru_cache(maxsize=8192)
+def tokenize_underthesea_text(text: str) -> tuple[str, ...]:
+    text = text.lower().strip()
+    text = _WHITESPACE_RE.sub(" ", text)
+
+    try:
+        from underthesea.pipeline.word_tokenize import word_tokenize
+
+        tokenized = word_tokenize(text, format="text")
+    except Exception:
+        tokenized = text
+
+    tokenized = _WHITESPACE_RE.sub(" ", tokenized).strip()
+    if not tokenized:
+        return ()
+
+    tokens = [tok for tok in tokenized.split() if tok]
+    return tuple(tokens)

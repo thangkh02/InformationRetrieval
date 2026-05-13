@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import math
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import joblib
 import numpy as np
-from rank_bm25 import BM25Okapi
 
 from .documents import NewsDocument, SearchResult
-from .text_utils import tokenize_text
+from .text_utils import tokenize_underthesea_text
 
 
 class BM25SearchEngine:
@@ -15,41 +16,102 @@ class BM25SearchEngine:
         self.k1 = k1
         self.b = b
         self.documents: list[NewsDocument] = []
-        self.tokenized_corpus: list[list[str]] = []
-        self.bm25: BM25Okapi | None = None
+        self.doc_lengths: list[int] = []
+        self.avgdl: float = 0.0
+        self.inverted_index: dict[str, list[tuple[int, int]]] = {}
+        self.idf: dict[str, float] = {}
 
     def fit(self, documents: list[NewsDocument]) -> None:
         if not documents:
             raise ValueError("No documents provided for indexing.")
+
         self.documents = documents
-        self.tokenized_corpus = [tokenize_text(doc.text) for doc in documents]
-        self.bm25 = BM25Okapi(self.tokenized_corpus, k1=self.k1, b=self.b)
+        self.doc_lengths = []
+        postings: dict[str, list[tuple[int, int]]] = defaultdict(list)
+
+        for doc_idx, doc in enumerate(documents):
+            tokens = list(tokenize_underthesea_text(doc.text))
+            self.doc_lengths.append(len(tokens))
+            if not tokens:
+                continue
+
+            term_freqs = Counter(tokens)
+            for term, tf in term_freqs.items():
+                postings[term].append((doc_idx, tf))
+
+        self.avgdl = float(sum(self.doc_lengths) / len(self.doc_lengths)) if self.doc_lengths else 0.0
+        self.inverted_index = dict(postings)
+        self.idf = {}
+
+        total_docs = len(documents)
+        for term, posting_list in self.inverted_index.items():
+            df = len(posting_list)
+            self.idf[term] = math.log(1.0 + (total_docs - df + 0.5) / (df + 0.5))
+
+    def _score_document(self, doc_idx: int, query_terms: list[str]) -> float:
+        score = 0.0
+        dl = self.doc_lengths[doc_idx]
+        denom_norm = self.k1 * (1.0 - self.b + self.b * (dl / self.avgdl)) if self.avgdl > 0 else self.k1
+
+        term_freqs = Counter(query_terms)
+        for term, qtf in term_freqs.items():
+            posting_list = self.inverted_index.get(term)
+            if not posting_list:
+                continue
+            idf = self.idf.get(term, 0.0)
+            # Accumulate only from the matching term frequency in this document.
+            tf = 0
+            for posted_doc_idx, posted_tf in posting_list:
+                if posted_doc_idx == doc_idx:
+                    tf = posted_tf
+                    break
+            if tf == 0:
+                continue
+
+            numer = tf * (self.k1 + 1.0)
+            denom = tf + denom_norm
+            score += idf * (numer / denom)
+
+        return score
 
     def search(self, query: str, top_k: int = 10) -> list[SearchResult]:
-        if self.bm25 is None:
+        if not self.documents:
             raise RuntimeError("The engine has not been fitted yet.")
         if not query.strip():
             return []
 
-        tokens = tokenize_text(query)
-        if not tokens:
+        query_terms = list(tokenize_underthesea_text(query))
+        if not query_terms:
             return []
 
-        scores = np.asarray(self.bm25.get_scores(tokens), dtype=np.float32)
-        if scores.size == 0:
+        candidate_scores: dict[int, float] = defaultdict(float)
+        query_term_set = set(query_terms)
+
+        for term in query_term_set:
+            posting_list = self.inverted_index.get(term)
+            if not posting_list:
+                continue
+            idf = self.idf.get(term, 0.0)
+            for doc_idx, tf in posting_list:
+                dl = self.doc_lengths[doc_idx]
+                denom_norm = self.k1 * (1.0 - self.b + self.b * (dl / self.avgdl)) if self.avgdl > 0 else self.k1
+                numer = tf * (self.k1 + 1.0)
+                denom = tf + denom_norm
+                candidate_scores[doc_idx] += idf * (numer / denom)
+
+        if not candidate_scores:
             return []
 
-        top_k = min(top_k, scores.size)
-        top_indices = np.argpartition(-scores, top_k - 1)[:top_k]
-        top_indices = top_indices[np.argsort(-scores[top_indices])]
+        scored_items = sorted(candidate_scores.items(), key=lambda item: item[1], reverse=True)
+        top_items = scored_items[: min(top_k, len(scored_items))]
 
         results: list[SearchResult] = []
-        for idx in top_indices:
-            doc = self.documents[int(idx)]
+        for doc_idx, score in top_items:
+            doc = self.documents[doc_idx]
             results.append(
                 SearchResult(
                     doc_id=doc.doc_id,
-                    score=float(scores[idx]),
+                    score=float(score),
                     title=doc.title,
                     summary=doc.summary,
                     category=doc.category,
@@ -59,7 +121,7 @@ class BM25SearchEngine:
         return results
 
     def save(self, model_dir: str | Path) -> None:
-        if self.bm25 is None:
+        if not self.documents:
             raise RuntimeError("Nothing to save. Fit the engine first.")
         path = Path(model_dir)
         path.mkdir(parents=True, exist_ok=True)
@@ -68,7 +130,10 @@ class BM25SearchEngine:
                 "k1": self.k1,
                 "b": self.b,
                 "documents": self.documents,
-                "tokenized_corpus": self.tokenized_corpus,
+                "doc_lengths": self.doc_lengths,
+                "avgdl": self.avgdl,
+                "inverted_index": self.inverted_index,
+                "idf": self.idf,
             },
             path / "bm25_model.joblib",
         )
@@ -78,6 +143,8 @@ class BM25SearchEngine:
         payload = joblib.load(Path(model_dir) / "bm25_model.joblib")
         engine = cls(k1=payload["k1"], b=payload["b"])
         engine.documents = payload["documents"]
-        engine.tokenized_corpus = payload["tokenized_corpus"]
-        engine.bm25 = BM25Okapi(engine.tokenized_corpus, k1=engine.k1, b=engine.b)
+        engine.doc_lengths = payload["doc_lengths"]
+        engine.avgdl = payload["avgdl"]
+        engine.inverted_index = payload["inverted_index"]
+        engine.idf = payload["idf"]
         return engine

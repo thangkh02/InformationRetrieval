@@ -19,11 +19,17 @@ class BGEM3SearchEngine:
         batch_size: int = 8,
         max_length: int = 1024,
         device: str | None = None,
+        index_type: str = "flat",
+        nlist: int = 100,
+        nprobe: int = 10,
     ) -> None:
         self.model_name = model_name
         self.batch_size = batch_size
         self.max_length = max_length
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.index_type = index_type
+        self.nlist = nlist
+        self.nprobe = nprobe
         self.model = SentenceTransformer(model_name, device=self.device)
         self.model.max_seq_length = max_length
         self.documents: list[NewsDocument] = []
@@ -52,8 +58,22 @@ class BGEM3SearchEngine:
         corpus = [doc.text for doc in documents]
         self.embeddings = self._encode_texts(corpus)
         dim = int(self.embeddings.shape[1])
-        self.index = faiss.IndexFlatIP(dim)
+        self.index = self._create_index(dim, self.embeddings)
         self.index.add(self.embeddings)
+
+    def _create_index(self, dim: int, embeddings: np.ndarray) -> faiss.Index:
+        if self.index_type == "flat":
+            return faiss.IndexFlatIP(dim)
+
+        if self.index_type == "ivf_flat":
+            actual_nlist = max(1, min(self.nlist, embeddings.shape[0]))
+            quantizer = faiss.IndexFlatIP(dim)
+            index = faiss.IndexIVFFlat(quantizer, dim, actual_nlist, faiss.METRIC_INNER_PRODUCT)
+            index.train(embeddings)
+            index.nprobe = max(1, min(self.nprobe, actual_nlist))
+            return index
+
+        raise ValueError(f"Unsupported index_type: {self.index_type}")
 
     def search(self, query: str, top_k: int = 10) -> list[SearchResult]:
         if self.index is None or self.embeddings is None:
@@ -96,6 +116,9 @@ class BGEM3SearchEngine:
                 "model_name": self.model_name,
                 "batch_size": self.batch_size,
                 "max_length": self.max_length,
+                "index_type": self.index_type,
+                "nlist": self.nlist,
+                "nprobe": self.nprobe,
                 "documents": self.documents,
             },
             path / "bge_m3_meta.joblib",
@@ -110,6 +133,9 @@ class BGEM3SearchEngine:
             batch_size=payload["batch_size"],
             max_length=payload["max_length"],
             device=device,
+            index_type=payload.get("index_type", "flat"),
+            nlist=payload.get("nlist", 100),
+            nprobe=payload.get("nprobe", 10),
         )
         engine.documents = [
             doc

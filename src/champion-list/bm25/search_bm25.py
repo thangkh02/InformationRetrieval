@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
+from pathlib import Path
 from textwrap import shorten
 
-from .bm25_engine import BM25SearchEngine
+CURRENT_DIR = Path(__file__).resolve().parent
+PACKAGE_ROOT = CURRENT_DIR.parent
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
+
+from bm25.bm25_engine import BM25SearchEngine
 
 
 def build_parser() -> argparse.ArgumentParser:

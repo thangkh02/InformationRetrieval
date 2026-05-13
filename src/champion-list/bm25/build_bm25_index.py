@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 
-from .bm25_engine import BM25SearchEngine
-from .io import read_jsonl
+CURRENT_DIR = Path(__file__).resolve().parent
+PACKAGE_ROOT = CURRENT_DIR.parent
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
+
+from bm25.bm25_engine import BM25SearchEngine
+from io import read_jsonl
 
 
 def build_parser() -> argparse.ArgumentParser:

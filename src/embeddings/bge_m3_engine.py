@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Iterable
 
@@ -9,7 +10,12 @@ import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
 
-from .documents import NewsDocument, SearchResult
+CURRENT_DIR = Path(__file__).resolve().parent
+PACKAGE_ROOT = CURRENT_DIR.parent
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
+
+from documents import NewsDocument, SearchResult
 
 
 class BGEM3SearchEngine:

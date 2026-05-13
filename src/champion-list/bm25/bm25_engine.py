@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import heapq
 import math
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
 import joblib
 
-from .documents import NewsDocument, SearchResult
-from .text_utils import tokenize_underthesea_text
+CURRENT_DIR = Path(__file__).resolve().parent
+PACKAGE_ROOT = CURRENT_DIR.parent
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
+
+from documents import NewsDocument, SearchResult
+from text_utils import tokenize_underthesea_text
 
 
 class BM25SearchEngine:
@@ -65,32 +71,6 @@ class BM25SearchEngine:
 
                 top_postings = heapq.nlargest(self.champion_size, scored_postings, key=lambda item: item[0])
                 self.champion_index[term] = [(doc_idx, tf) for _, doc_idx, tf in top_postings]
-
-    def _score_document(self, doc_idx: int, query_terms: list[str]) -> float:
-        score = 0.0
-        dl = self.doc_lengths[doc_idx]
-        denom_norm = self.k1 * (1.0 - self.b + self.b * (dl / self.avgdl)) if self.avgdl > 0 else self.k1
-
-        term_freqs = Counter(query_terms)
-        for term, qtf in term_freqs.items():
-            posting_list = self.inverted_index.get(term)
-            if not posting_list:
-                continue
-            idf = self.idf.get(term, 0.0)
-            # Accumulate only from the matching term frequency in this document.
-            tf = 0
-            for posted_doc_idx, posted_tf in posting_list:
-                if posted_doc_idx == doc_idx:
-                    tf = posted_tf
-                    break
-            if tf == 0:
-                continue
-
-            numer = tf * (self.k1 + 1.0)
-            denom = tf + denom_norm
-            score += idf * (numer / denom)
-
-        return score
 
     def search(self, query: str, top_k: int = 10) -> list[SearchResult]:
         if not self.documents:

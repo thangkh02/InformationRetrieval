@@ -167,19 +167,49 @@ PYTHONPATH=src python -m cli build-bm25 \
 Neu muon tach ro buoc build va buoc search:
 
 ```bash
-PYTHONPATH=src python -m search_tfidf.build_bm25_index \
+python src/champion-list/bm25/build_bm25_index.py \
   --input data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl \
   --model-dir artifacts/bm25_legal_full
 
-PYTHONPATH=src python -m search_tfidf.search_bm25 \
+python src/champion-list/bm25/search_bm25.py \
   --model-dir artifacts/bm25_legal_full \
   --query "Mức phạt khi quay đầu xe ô tô trên đường cao tốc" \
   --top-k 5
 ```
 
 Luong nay co y nghia:
-- `build_bm25_index.py` chi dung de tao va luu inverted index.
-- `search_bm25.py` chi dung de load index san va truy xuat, khong build lai.
+- `bm25/build_bm25_index.py` chi dung de tao va luu inverted index.
+- `bm25/search_bm25.py` chi dung de load index san va truy xuat, khong build lai.
+
+## Evaluate BM25 With Champion List
+
+Neu muon do luc va metric cua BM25 tren cung corpus da tokenize san, dung script:
+
+```bash
+python src/champion-list/bm25/evaluate_bm25.py \
+  --corpus-tokenized artifacts/bm25_underthesea/corpus_doc_id.jsonl \
+  --queries-tokenized artifacts/bm25_underthesea/queries_test_tokens.jsonl \
+  --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/test.jsonl \
+  --mode both \
+  --champion-size 9000
+```
+
+Neu muon evaluate tren tap train:
+
+```bash
+python src/champion-list/bm25/evaluate_bm25.py \
+  --corpus-tokenized artifacts/bm25_underthesea/corpus_doc_id.jsonl \
+  --queries-raw data/zalo_ai_legal_text_retrieval_vn/queries_unique.jsonl \
+  --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/train.jsonl \
+  --mode both \
+  --champion-size 9000
+```
+
+Ghi chu:
+- `--queries-tokenized` dung khi ban da co query tokenize san, hop cho benchmark latency.
+- `--queries-raw` se tokenize query bang underthesea luc runtime.
+- `--mode both` in ra ca BM25 full va BM25 champion list trong cung mot lan chay.
+- `--champion-size` co the doi thanh `8000`, `9000`, `10000` tuy luc canh chinh.
 
 ## Luu Y Ve Git
 

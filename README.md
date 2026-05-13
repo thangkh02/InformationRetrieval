@@ -162,6 +162,25 @@ PYTHONPATH=src python -m cli build-bm25 \
   --model-dir artifacts/bm25_legal_full
 ```
 
+## BM25 Rieng Ro
+
+Neu muon tach ro buoc build va buoc search:
+
+```bash
+PYTHONPATH=src python -m search_tfidf.build_bm25_index \
+  --input data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl \
+  --model-dir artifacts/bm25_legal_full
+
+PYTHONPATH=src python -m search_tfidf.search_bm25 \
+  --model-dir artifacts/bm25_legal_full \
+  --query "Mức phạt khi quay đầu xe ô tô trên đường cao tốc" \
+  --top-k 5
+```
+
+Luong nay co y nghia:
+- `build_bm25_index.py` chi dung de tao va luu inverted index.
+- `search_bm25.py` chi dung de load index san va truy xuat, khong build lai.
+
 ## Luu Y Ve Git
 
 Khong nen commit cac file trong `artifacts/` len GitHub vi embedding/index rat lon.

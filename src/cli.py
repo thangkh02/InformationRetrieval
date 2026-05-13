@@ -27,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_bm25_parser = subparsers.add_parser("build-bm25", help="Build BM25 index")
     build_bm25_parser.add_argument("--input", required=True, help="Input JSONL path")
     build_bm25_parser.add_argument("--model-dir", required=True, help="Directory to store model artifacts")
+    build_bm25_parser.add_argument("--champion-size", type=int, default=8000, help="Optional champion list size per term")
 
     build_phobert_parser = subparsers.add_parser("build-phobert", help="Build PhoBERT vector index")
     build_phobert_parser.add_argument("--input", required=True, help="Input JSONL path")
@@ -104,7 +105,7 @@ def main() -> None:
 
     if args.command == "build-bm25":
         docs = read_jsonl(args.input)
-        engine = BM25SearchEngine()
+        engine = BM25SearchEngine(champion_size=args.champion_size)
         engine.fit(docs)
         engine.save(args.model_dir)
         print(f"Built BM25 index for {len(docs)} documents at {args.model_dir}")

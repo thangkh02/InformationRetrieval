@@ -27,6 +27,7 @@ def evaluate_recall_mrr(
     total_candidates = len(eval_ids)
 
     total = 0
+    recall_sum = 0.0
     hits = 0
     mrr_sum = 0.0
 
@@ -37,22 +38,27 @@ def evaluate_recall_mrr(
         results = engine.search(q_text, top_k=k)
 
         first_rank = 0
+        retrieved_relevant = 0
         for rank, row in enumerate(results, start=1):
             if row.doc_id in rel_docs:
-                first_rank = rank
-                break
+                retrieved_relevant += 1
+                if first_rank == 0:
+                    first_rank = rank
 
-        if first_rank > 0:
+        if rel_docs:
+            recall_sum += retrieved_relevant / len(rel_docs)
+        if retrieved_relevant > 0:
             hits += 1
+        if first_rank > 0:
             mrr_sum += 1.0 / first_rank
 
         if log_every > 0 and (total % log_every == 0 or total == total_candidates):
-            running_recall = hits / total
+            running_recall = recall_sum / total
             if progress_callback is not None:
                 progress_callback(total, total_candidates, hits, running_recall)
 
     if total == 0:
         raise ValueError("No query matched qrels.")
 
-    return total, hits / total, mrr_sum / total
+    return total, recall_sum / total, mrr_sum / total
 

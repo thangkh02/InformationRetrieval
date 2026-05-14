@@ -70,6 +70,10 @@ def load_index(index_path: str):
 
 def search(index_path: str, query: str, top_k: int) -> list[tuple[str, float]]:
     vectorizer, doc_ids, _, doc_matrix = load_index(index_path)
+    return search_with_loaded_index(vectorizer, doc_ids, doc_matrix, query, top_k)
+
+
+def search_with_loaded_index(vectorizer, doc_ids: list[str], doc_matrix, query: str, top_k: int) -> list[tuple[str, float]]:
     q_vec = vectorizer.transform([query])
     if q_vec.nnz == 0:
         return []
@@ -84,9 +88,14 @@ def search(index_path: str, query: str, top_k: int) -> list[tuple[str, float]]:
     return [(doc_ids[i], float(scores[i])) for i in top_idx]
 
 
-def evaluate(index_path: str, queries_path: str, qrels_path: str, k: int) -> None:
-    queries = load_jsonl(queries_path)
+def evaluate(index_path: str, queries_path: str, qrels_path: str, k: int, log_every: int = 100) -> None:
+    print(f"[eval] Loading queries from: {queries_path}")
+    raw_queries = load_jsonl(queries_path)
+    print(f"[eval] Loading qrels from  : {qrels_path}")
     qrels = load_jsonl(qrels_path)
+    print(f"[eval] Loading index from  : {index_path}")
+    vectorizer, doc_ids, _, doc_matrix = load_index(index_path)
+    print(f"[eval] Loaded queries={len(raw_queries)}, qrels={len(qrels)}")
 
     rel_map: dict[str, set[str]] = defaultdict(set)
     for row in qrels:
@@ -96,40 +105,77 @@ def evaluate(index_path: str, queries_path: str, qrels_path: str, k: int) -> Non
         if qid and cid and score > 0:
             rel_map[qid].add(cid)
 
+    # Deduplicate queries by id and keep first non-empty text.
+    query_map: dict[str, str] = {}
+    for q in raw_queries:
+        qid = str(q.get("_id", "")).strip()
+        text = str(q.get("text", "")).strip()
+        if not qid or not text:
+            continue
+        if qid not in query_map:
+            query_map[qid] = text
+
+    eval_ids = [qid for qid in rel_map.keys() if qid in query_map]
+
     total = 0
+    recall_sum = 0.0
     hit_count = 0
     mrr_sum = 0.0
 
-    for q in queries:
-        qid = str(q.get("_id", ""))
-        text = str(q.get("text", "")).strip()
-        if not qid or not text or qid not in rel_map:
-            continue
-
+    for qid in eval_ids:
+        text = query_map[qid]
         total += 1
-        preds = search(index_path=index_path, query=text, top_k=k)
+        preds = search_with_loaded_index(
+            vectorizer=vectorizer,
+            doc_ids=doc_ids,
+            doc_matrix=doc_matrix,
+            query=text,
+            top_k=k,
+        )
         pred_ids = [doc_id for doc_id, _ in preds]
 
         rel_docs = rel_map[qid]
+        retrieved_relevant = 0
         found_rank = 0
         for rank, doc_id in enumerate(pred_ids, start=1):
             if doc_id in rel_docs:
-                found_rank = rank
-                break
+                retrieved_relevant += 1
+                if found_rank == 0:
+                    found_rank = rank
 
-        if found_rank > 0:
+        if rel_docs:
+            recall_sum += retrieved_relevant / len(rel_docs)
+
+        if retrieved_relevant > 0:
             hit_count += 1
+        if found_rank > 0:
             mrr_sum += 1.0 / found_rank
+
+        if log_every > 0 and total % log_every == 0:
+            running_recall = recall_sum / total
+            running_hit = hit_count / total
+            running_mrr = mrr_sum / total
+            print(
+                f"[eval] Progress: {total}/{len(eval_ids)} queries | "
+                f"running Recall@{k}={running_recall:.4f}, "
+                f"Hit@{k}={running_hit:.4f}, MRR@{k}={running_mrr:.4f}"
+            )
 
     if total == 0:
         raise ValueError("No evaluable queries found. Check queries/qrels alignment.")
 
-    recall_at_k = hit_count / total
+    recall_at_k = recall_sum / total
+    hit_at_k = hit_count / total
     mrr_at_k = mrr_sum / total
 
-    print(f"Queries evaluated : {total}")
-    print(f"Recall@{k}         : {recall_at_k:.4f}")
-    print(f"MRR@{k}            : {mrr_at_k:.4f}")
+    print(f"Queries total rows     : {len(raw_queries)}")
+    print(f"Queries unique ids     : {len(query_map)}")
+    print(f"Qrels rows             : {len(qrels)}")
+    print(f"Qrels unique query ids : {len(rel_map)}")
+    print(f"Queries evaluated      : {total}")
+    print(f"Recall@{k}             : {recall_at_k:.4f}")
+    print(f"Hit@{k}                : {hit_at_k:.4f}")
+    print(f"MRR@{k}                : {mrr_at_k:.4f}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -153,6 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval.add_argument("--queries", required=True)
     p_eval.add_argument("--qrels", required=True)
     p_eval.add_argument("--k", type=int, default=10)
+    p_eval.add_argument("--log-every", type=int, default=100)
 
     return parser
 
@@ -180,7 +227,13 @@ def main() -> None:
         return
 
     if args.command == "eval":
-        evaluate(index_path=args.index, queries_path=args.queries, qrels_path=args.qrels, k=args.k)
+        evaluate(
+            index_path=args.index,
+            queries_path=args.queries,
+            qrels_path=args.qrels,
+            k=args.k,
+            log_every=args.log_every,
+        )
 
 
 if __name__ == "__main__":

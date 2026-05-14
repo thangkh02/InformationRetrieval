@@ -26,7 +26,7 @@ Huong chay hien tai la dense retrieval voi BGE-M3 + FAISS tren full corpus.
     ├── cli.py
     └── search_tfidf/
         ├── bge_m3_engine.py
-        ├── bm25_engine.py
+        ├── champion_bm25/
         ├── documents.py
         ├── engine.py
         ├── io.py
@@ -162,54 +162,54 @@ PYTHONPATH=src python -m cli build-bm25 \
   --model-dir artifacts/bm25_legal_full
 ```
 
-## BM25 Rieng Ro
+## Champion BM25 Inference
 
-Neu muon tach ro buoc build va buoc search:
+Module nay chi dung cho bo Zalo AI Legal Text Retrieval VN va artifact tokenized trong `artifacts/bm25_underthesea`.
+
+Build BM25 champion-list model mot lan tu corpus da tokenize:
 
 ```bash
-python src/champion-list/bm25/build_bm25_index.py \
-  --input data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl \
-  --model-dir artifacts/bm25_legal_full
-
-python src/champion-list/bm25/search_bm25.py \
-  --model-dir artifacts/bm25_legal_full \
-  --query "Mức phạt khi quay đầu xe ô tô trên đường cao tốc" \
-  --top-k 5
+python src/champion-list/champion_bm25/build_model.py --corpus-tokenized artifacts/bm25_underthesea/corpus_doc_id.jsonl --model-dir artifacts/bm25_legal_full --champion-size 9000
 ```
 
-Luong nay co y nghia:
-- `bm25/build_bm25_index.py` chi dung de tao va luu inverted index.
-- `bm25/search_bm25.py` chi dung de load index san va truy xuat, khong build lai.
-
-## Evaluate BM25 With Champion List
-
-Neu muon do luc va metric cua BM25 tren cung corpus da tokenize san, dung script:
+Sau do inference truc tiep bang query text:
 
 ```bash
-python src/champion-list/bm25/evaluate_bm25.py \
-  --corpus-tokenized artifacts/bm25_underthesea/corpus_doc_id.jsonl \
+python src/champion-list/champion_bm25/search.py --model-dir artifacts/bm25_legal_full --query "Mức phạt khi quay đầu xe ô tô trên đường cao tốc" --top-k 5
+```
+
+Luong nay hoat dong nhu sau:
+- `build_model.py` build va luu `inverted_index`, `champion_index`, `idf`, `doc_lengths`, `avgdl`.
+- `search.py` chi load `bm25_model.joblib`, tokenize query bang `underthesea`, roi search.
+- Corpus khong tokenize lai va khong build lai chi muc luc inference.
+
+## Evaluate Champion BM25
+
+Neu muon do metric cua BM25 champion-list dung dung model inference da build san:
+
+```bash
+python src/champion-list/champion_bm25/evaluate.py \
+  --model-dir artifacts/bm25_legal_full \
   --queries-tokenized artifacts/bm25_underthesea/queries_test_tokens.jsonl \
   --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/test.jsonl \
-  --mode both \
-  --champion-size 9000
+  --mode both
 ```
 
 Neu muon evaluate tren tap train:
 
 ```bash
-python src/champion-list/bm25/evaluate_bm25.py \
-  --corpus-tokenized artifacts/bm25_underthesea/corpus_doc_id.jsonl \
+python src/champion-list/champion_bm25/evaluate.py \
+  --model-dir artifacts/bm25_legal_full \
   --queries-raw data/zalo_ai_legal_text_retrieval_vn/queries_unique.jsonl \
   --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/train.jsonl \
-  --mode both \
-  --champion-size 9000
+  --mode both
 ```
 
 Ghi chu:
 - `--queries-tokenized` dung khi ban da co query tokenize san, hop cho benchmark latency.
 - `--queries-raw` se tokenize query bang underthesea luc runtime.
 - `--mode both` in ra ca BM25 full va BM25 champion list trong cung mot lan chay.
-- `--champion-size` co the doi thanh `8000`, `9000`, `10000` tuy luc canh chinh.
+- `--champion-size` chi can o buoc build model; inference va evaluate tu `--model-dir` se dung champion size da luu san.
 
 ## Luu Y Ve Git
 

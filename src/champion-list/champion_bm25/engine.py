@@ -13,7 +13,7 @@ PACKAGE_ROOT = CURRENT_DIR.parent
 if str(PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_ROOT))
 
-from documents import NewsDocument, SearchResult
+from documents import LegalDocument, SearchResult
 from text_utils import tokenize_underthesea_text
 
 
@@ -22,14 +22,14 @@ class BM25SearchEngine:
         self.k1 = k1
         self.b = b
         self.champion_size = champion_size
-        self.documents: list[NewsDocument] = []
+        self.documents: list[LegalDocument] = []
         self.doc_lengths: list[int] = []
         self.avgdl: float = 0.0
         self.inverted_index: dict[str, list[tuple[int, int]]] = {}
         self.champion_index: dict[str, list[tuple[int, int]]] = {}
         self.idf: dict[str, float] = {}
 
-    def fit(self, documents: list[NewsDocument]) -> None:
+    def fit(self, documents: list[LegalDocument]) -> None:
         if not documents:
             raise ValueError("No documents provided for indexing.")
 
@@ -110,8 +110,6 @@ class BM25SearchEngine:
                     doc_id=doc.doc_id,
                     score=float(score),
                     title=doc.title,
-                    summary=doc.summary,
-                    category=doc.category,
                     content=doc.content,
                 )
             )

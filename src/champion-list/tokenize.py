@@ -7,10 +7,8 @@ import sysconfig
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-SRC = ROOT / "src"
-TEXT_UTILS_PATH = SRC / "search_tfidf" / "text_utils.py"
+TEXT_UTILS_PATH = ROOT / "text_utils.py"
 
-# Keep this module compatible with the stdlib `tokenize` module.
 _STD_TOKENIZE_PATH = Path(sysconfig.get_path("stdlib")) / "tokenize.py"
 _STD_TOKENIZE_SPEC = importlib.util.spec_from_file_location("_stdlib_tokenize", _STD_TOKENIZE_PATH)
 if _STD_TOKENIZE_SPEC is not None and _STD_TOKENIZE_SPEC.loader is not None:
@@ -26,7 +24,7 @@ if spec is None or spec.loader is None:
     raise RuntimeError(f"Could not load {TEXT_UTILS_PATH}")
 text_utils = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(text_utils)
-tokenize_text = text_utils.tokenize_text
+tokenize_text = text_utils.tokenize_underthesea_text
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,8 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--id-field", default="", help="Optional explicit id field name")
     parser.add_argument(
         "--text-fields",
-        default="title,text,content",
-        help="Comma-separated fields to join and tokenize in order of priority",
+        default="title,text",
+        help="Comma-separated legal corpus fields to join and tokenize",
     )
     return parser
 
@@ -88,11 +86,12 @@ def main() -> None:
             obj = json.loads(line)
             item_id = _resolve_id(obj, args.id_field)
             text = _resolve_text(obj, text_fields)
-            tokens = tokenize_text(text)
+            tokens = list(tokenize_text(text))
             fout.write(
                 json.dumps(
                     {
                         "id": item_id,
+                        "doc_id": item_id,
                         "tokens": tokens,
                     },
                     ensure_ascii=False,

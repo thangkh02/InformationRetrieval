@@ -6,7 +6,7 @@ import math
 import statistics
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import defaultdict
 from pathlib import Path
 from typing import Iterable
 
@@ -16,6 +16,8 @@ if str(PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_ROOT))
 
 from text_utils import tokenize_underthesea_text
+from champion_bm25.engine import BM25SearchEngine
+from champion_bm25.indexing import build_champion_index, load_tokenized_corpus
 
 TOP_KS = (1, 3, 5, 10, 20, 50, 100)
 
@@ -29,74 +31,12 @@ def read_jsonl(path: str | Path) -> Iterable[dict]:
                 yield json.loads(line)
 
 
-def load_tokenized_corpus(path: str | Path):
-    doc_ids: list[str] = []
-    doc_lengths: list[int] = []
-    postings: dict[str, list[tuple[int, int]]] = defaultdict(list)
-
-    for doc_idx, item in enumerate(read_jsonl(path)):
-        doc_id = item.get("doc_id", item.get("_id"))
-        if doc_id is None:
-            raise KeyError("Tokenized corpus records must contain 'doc_id' or '_id'.")
-
-        tokens = item.get("tokens")
-        if not isinstance(tokens, list):
-            raise TypeError("Tokenized corpus records must contain a list field named 'tokens'.")
-
-        token_list = [str(tok) for tok in tokens if str(tok).strip()]
-        doc_ids.append(str(doc_id))
-        doc_lengths.append(len(token_list))
-
-        term_freqs = Counter(token_list)
-        for term, tf in term_freqs.items():
-            postings[term].append((doc_idx, tf))
-
-    if not doc_ids:
-        raise ValueError("Corpus is empty.")
-
-    avgdl = float(sum(doc_lengths) / len(doc_lengths))
-    total_docs = len(doc_ids)
-    inverted_index = dict(postings)
-    idf = {
-        term: math.log(1.0 + (total_docs - len(posting_list) + 0.5) / (len(posting_list) + 0.5))
-        for term, posting_list in inverted_index.items()
-    }
-    return doc_ids, doc_lengths, avgdl, inverted_index, idf
-
-
-def build_champion_index(
-    inverted_index: dict[str, list[tuple[int, int]]],
-    doc_lengths: list[int],
-    avgdl: float,
-    idf: dict[str, float],
-    champion_size: int,
-    k1: float = 1.5,
-    b: float = 0.75,
-) -> dict[str, list[tuple[int, int]]]:
-    champion_index: dict[str, list[tuple[int, int]]] = {}
-    for term, posting_list in inverted_index.items():
-        scored_postings: list[tuple[float, int, int]] = []
-        idf_term = idf.get(term, 0.0)
-        for doc_idx, tf in posting_list:
-            dl = doc_lengths[doc_idx]
-            denom_norm = k1 * (1.0 - b + b * (dl / avgdl)) if avgdl > 0 else k1
-            numer = tf * (k1 + 1.0)
-            denom = tf + denom_norm
-            score = idf_term * (numer / denom)
-            scored_postings.append((score, doc_idx, tf))
-
-        scored_postings.sort(key=lambda item: item[0], reverse=True)
-        champion_index[term] = [(doc_idx, tf) for _, doc_idx, tf in scored_postings[:champion_size]]
-
-    return champion_index
-
-
 def load_queries(path: str | Path, tokenized: bool):
     queries: dict[str, list[str]] = {}
     for item in read_jsonl(path):
-        query_id = item.get("qid", item.get("query-id", item.get("_id")))
+        query_id = item.get("qid", item.get("query-id", item.get("id", item.get("_id"))))
         if query_id is None:
-            raise KeyError("Query records must contain 'qid', 'query-id', or '_id'.")
+            raise KeyError("Query records must contain 'qid', 'query-id', 'id', or '_id'.")
 
         if tokenized:
             tokens = item.get("tokens")
@@ -252,10 +192,12 @@ def evaluate(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="evaluate_bm25",
-        description="Evaluate BM25 full scoring and champion list on tokenized or raw query files.",
+        prog="champion_bm25.evaluate",
+        description="Evaluate BM25 full scoring and BM25 champion-list scoring.",
     )
-    parser.add_argument("--corpus-tokenized", required=True, help="Tokenized corpus JSONL with doc_id and tokens")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--corpus-tokenized", help="Tokenized corpus JSONL with doc_id and tokens")
+    source.add_argument("--model-dir", help="Directory containing prebuilt bm25_model.joblib")
     parser.add_argument("--qrels", required=True, help="Qrels JSONL with query-id and corpus-id")
     parser.add_argument("--queries-tokenized", help="Tokenized query JSONL with qid and tokens")
     parser.add_argument("--queries-raw", help="Raw query JSONL with _id/qid and text")
@@ -281,26 +223,42 @@ def main() -> None:
         raise ValueError("Provide either --queries-tokenized or --queries-raw.")
 
     qrels = load_qrels(args.qrels)
-    doc_ids, doc_lengths, avgdl, inverted_index, idf = load_tokenized_corpus(args.corpus_tokenized)
+
+    if args.model_dir:
+        engine = BM25SearchEngine.load(args.model_dir)
+        doc_ids = [str(doc.doc_id) for doc in engine.documents]
+        doc_lengths = engine.doc_lengths
+        avgdl = engine.avgdl
+        inverted_index = engine.inverted_index
+        idf = engine.idf
+        prebuilt_champion_index = engine.champion_index
+        champion_size = engine.champion_size
+    else:
+        doc_ids, doc_lengths, avgdl, inverted_index, idf = load_tokenized_corpus(args.corpus_tokenized)
+        prebuilt_champion_index = None
+        champion_size = args.champion_size
 
     champion_index = None
     champion_build_seconds = 0.0
     if args.mode in {"champion", "both"}:
-        start_build = time.perf_counter()
-        champion_index = build_champion_index(
-            inverted_index=inverted_index,
-            doc_lengths=doc_lengths,
-            avgdl=avgdl,
-            idf=idf,
-            champion_size=args.champion_size,
-        )
-        champion_build_seconds = time.perf_counter() - start_build
+        if prebuilt_champion_index is not None:
+            champion_index = prebuilt_champion_index
+        else:
+            start_build = time.perf_counter()
+            champion_index = build_champion_index(
+                inverted_index=inverted_index,
+                doc_lengths=doc_lengths,
+                avgdl=avgdl,
+                idf=idf,
+                champion_size=args.champion_size,
+            )
+            champion_build_seconds = time.perf_counter() - start_build
 
     print(f"corpus_docs={len(doc_ids)}")
     print(f"queries_loaded={len(queries)}")
     print(f"qrels_queries={len(qrels)}")
     if champion_index is not None:
-        print(f"champion_size={args.champion_size}")
+        print(f"champion_size={champion_size}")
         print(f"champion_build_s={champion_build_seconds:.2f}")
 
     rows = []
@@ -323,7 +281,7 @@ def main() -> None:
     if args.mode in {"champion", "both"}:
         rows.append(
             evaluate(
-                label=f"BM25 champion={args.champion_size}",
+                label=f"BM25 champion={champion_size}",
                 doc_ids=doc_ids,
                 doc_lengths=doc_lengths,
                 avgdl=avgdl,

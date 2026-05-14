@@ -1,1 +1,3 @@
-search_tfidf
+champion-list
+embeddings
+tfidf_vsm

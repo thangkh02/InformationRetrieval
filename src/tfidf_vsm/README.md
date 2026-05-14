@@ -9,19 +9,14 @@ python src/tfidf_vsm/run_tfidf_vsm.py build ^
 
 ## 2) Search thử
 ```bash
-python src/tfidf_vsm/run_tfidf_vsm.py search ^
-  --index artifacts/tfidf_vsm/tfidf_vsm.joblib ^
-  --query "Công an xã có được xử phạt không mang bằng lái xe không?" ^
-  --top-k 5
+python src/tfidf_vsm/run_tfidf_vsm.py search --index artifacts/tfidf_vsm/tfidf_vsm.joblib --query "Công an xã có được xử phạt không mang bằng lái xe không?" --top-k 5
+
 ```
 
 ## 3) Đánh giá trên test qrels
 ```bash
-python src/tfidf_vsm/run_tfidf_vsm.py eval ^
-  --index artifacts/tfidf_vsm/tfidf_vsm.joblib ^
-  --queries data/zalo_ai_legal_text_retrieval_vn/queries.jsonl ^
-  --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/test.jsonl ^
-  --k 10
+python src/tfidf_vsm/run_tfidf_vsm.py eval --index artifacts/tfidf_vsm/tfidf_vsm.joblib --queries data/zalo_ai_legal_text_retrieval_vn/queries.jsonl --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/test.jsonl --k 10
+
 ```
 
 Ghi chú:

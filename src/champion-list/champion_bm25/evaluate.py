@@ -19,7 +19,8 @@ from text_utils import tokenize_underthesea_text
 from champion_bm25.engine import BM25SearchEngine
 from champion_bm25.indexing import build_champion_index, load_tokenized_corpus
 
-TOP_KS = (1, 3, 5, 10, 20, 50, 100)
+TOP_KS = (1, 5, 10, 20)
+MAX_EVAL_K = max(TOP_KS)
 
 
 def read_jsonl(path: str | Path) -> Iterable[dict]:
@@ -101,8 +102,8 @@ def bm25_search(
     return [doc_idx for doc_idx, _ in ranked]
 
 
-def compute_metrics(ranked_doc_ids: list[str], relevant_doc_ids: set[str]) -> dict[int, tuple[float, float, float, float]]:
-    results: dict[int, tuple[float, float, float, float]] = {}
+def compute_metrics(ranked_doc_ids: list[str], relevant_doc_ids: set[str]) -> dict[int, tuple[float, float, float]]:
+    results: dict[int, tuple[float, float, float]] = {}
     relevant_count = len(relevant_doc_ids)
 
     for k in TOP_KS:
@@ -110,7 +111,6 @@ def compute_metrics(ranked_doc_ids: list[str], relevant_doc_ids: set[str]) -> di
         hits = [1 if doc_id in relevant_doc_ids else 0 for doc_id in top]
 
         recall = sum(hits) / relevant_count if relevant_count else 0.0
-        hit = 1.0 if any(hits) else 0.0
 
         rr = 0.0
         for rank, is_hit in enumerate(hits, start=1):
@@ -127,17 +127,17 @@ def compute_metrics(ranked_doc_ids: list[str], relevant_doc_ids: set[str]) -> di
         idcg = sum(1.0 / math.log2(rank + 1) for rank in range(1, ideal_hits + 1)) if ideal_hits else 0.0
         ndcg = dcg / idcg if idcg > 0 else 0.0
 
-        results[k] = (recall, hit, rr, ndcg)
+        results[k] = (recall, rr, ndcg)
 
     return results
 
 
-def aggregate_metrics(rows: list[dict[int, tuple[float, float, float, float]]]) -> dict[int, tuple[float, float, float, float]]:
-    totals = {k: [0.0, 0.0, 0.0, 0.0] for k in TOP_KS}
+def aggregate_metrics(rows: list[dict[int, tuple[float, float, float]]]) -> dict[int, tuple[float, float, float]]:
+    totals = {k: [0.0, 0.0, 0.0] for k in TOP_KS}
     for row in rows:
         for k in TOP_KS:
             values = row[k]
-            for idx in range(4):
+            for idx in range(3):
                 totals[k][idx] += values[idx]
 
     count = len(rows)
@@ -154,7 +154,6 @@ def evaluate(
     queries: dict[str, list[str]],
     qrels: dict[str, set[str]],
     champion_index: dict[str, list[tuple[int, int]]] | None = None,
-    top_k: int = 100,
 ) -> dict[str, object]:
     query_ids = [query_id for query_id in queries if query_id in qrels]
     if not query_ids:
@@ -175,7 +174,7 @@ def evaluate(
             champion_index=champion_index,
         )
         times.append(time.perf_counter() - start)
-        ranked_doc_ids = [doc_ids[idx] for idx in ranked_indices[:top_k]]
+        ranked_doc_ids = [doc_ids[idx] for idx in ranked_indices[:MAX_EVAL_K]]
         per_query_rows.append(compute_metrics(ranked_doc_ids, qrels[query_id]))
     total_time = time.perf_counter() - start_total
 
@@ -208,7 +207,6 @@ def build_parser() -> argparse.ArgumentParser:
         default="both",
         help="Run full BM25, champion list BM25, or both",
     )
-    parser.add_argument("--top-k", type=int, default=100, help="Cutoff used for ranking and metric aggregation")
     return parser
 
 
@@ -274,7 +272,6 @@ def main() -> None:
                 queries=queries,
                 qrels=qrels,
                 champion_index=None,
-                top_k=args.top_k,
             )
         )
 
@@ -290,16 +287,16 @@ def main() -> None:
                 queries=queries,
                 qrels=qrels,
                 champion_index=champion_index,
-                top_k=args.top_k,
             )
         )
 
-    print("model\tlatency_ms\tp50_ms\tp95_ms\tR@1\tR@10\tR@100\tMRR@10\tnDCG@10")
+    print("model\tlatency_ms\tp50_ms\tp95_ms\tR@1\tR@5\tR@10\tR@20\tMRR@10\tnDCG@10")
     for row in rows:
         metrics = row["metrics"]
         print(
             f"{row['label']}\t{row['latency_ms']:.2f}\t{row['p50_ms']:.2f}\t{row['p95_ms']:.2f}\t"
-            f"{metrics[1][0]:.4f}\t{metrics[10][0]:.4f}\t{metrics[100][0]:.4f}\t{metrics[10][2]:.4f}\t{metrics[10][3]:.4f}"
+            f"{metrics[1][0]:.4f}\t{metrics[5][0]:.4f}\t{metrics[10][0]:.4f}\t{metrics[20][0]:.4f}\t"
+            f"{metrics[10][1]:.4f}\t{metrics[10][2]:.4f}"
         )
 
 

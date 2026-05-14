@@ -37,7 +37,7 @@ def main() -> None:
         raise FileNotFoundError(
             f"{exc}. Build the model first with: "
             f"python src/champion-list/champion_bm25/build_model.py "
-            f"--corpus-tokenized artifacts/bm25_underthesea/corpus_doc_id.jsonl "
+            f"--input data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl "
             f"--model-dir {args.model_dir}"
         ) from exc
     results = engine.search(args.query, top_k=args.top_k)

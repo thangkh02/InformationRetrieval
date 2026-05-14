@@ -4,6 +4,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .lfs/
+*.pkl
+data/processed/
+artifacts/classic_ir/
+artifacts/classic_ir_benchmark/
 
 
 

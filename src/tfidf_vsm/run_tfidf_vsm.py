@@ -24,6 +24,8 @@ import json
 import math
 import pickle
 import re
+import statistics
+import time
 import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -261,8 +263,11 @@ def search(index_dir: str, query: str, top_k: int) -> list[tuple[str, float]]:
 
 
 # ---------------------------------------------------------------------------
-# Evaluation (Recall@k, Hit@k, MRR@k)
+# Evaluation  —  same pattern as evaluate_bm25.py
 # ---------------------------------------------------------------------------
+
+TOP_KS = (1, 3, 5, 10, 20, 50, 100)
+
 
 def _load_jsonl(path: str | Path) -> list[dict]:
     records: list[dict] = []
@@ -275,6 +280,53 @@ def _load_jsonl(path: str | Path) -> list[dict]:
     return records
 
 
+def compute_metrics(
+    ranked_doc_ids: list[str],
+    relevant_doc_ids: set[str],
+) -> dict[int, tuple[float, float, float, float]]:
+    """Return (Recall, Hit, MRR, nDCG) at every k in TOP_KS."""
+    results: dict[int, tuple[float, float, float, float]] = {}
+    relevant_count = len(relevant_doc_ids)
+
+    for k in TOP_KS:
+        top = ranked_doc_ids[:k]
+        hits = [1 if doc_id in relevant_doc_ids else 0 for doc_id in top]
+
+        recall = sum(hits) / relevant_count if relevant_count else 0.0
+        hit    = 1.0 if any(hits) else 0.0
+
+        rr = 0.0
+        for rank, is_hit in enumerate(hits, start=1):
+            if is_hit:
+                rr = 1.0 / rank
+                break
+
+        dcg = 0.0
+        for rank, is_hit in enumerate(hits, start=1):
+            if is_hit:
+                dcg += 1.0 / math.log2(rank + 1)
+
+        ideal_hits = min(relevant_count, k)
+        idcg = sum(1.0 / math.log2(r + 1) for r in range(1, ideal_hits + 1)) if ideal_hits else 0.0
+        ndcg = dcg / idcg if idcg > 0 else 0.0
+
+        results[k] = (recall, hit, rr, ndcg)
+
+    return results
+
+
+def aggregate_metrics(
+    rows: list[dict[int, tuple[float, float, float, float]]],
+) -> dict[int, tuple[float, float, float, float]]:
+    totals = {k: [0.0, 0.0, 0.0, 0.0] for k in TOP_KS}
+    for row in rows:
+        for k in TOP_KS:
+            for idx, val in enumerate(row[k]):
+                totals[k][idx] += val
+    count = len(rows)
+    return {k: tuple(v / count for v in totals[k]) for k in TOP_KS}
+
+
 def evaluate(
     index_dir: str,
     queries_path: str,
@@ -282,6 +334,8 @@ def evaluate(
     k: int = 10,
     log_every: int = 100,
 ) -> None:
+    FETCH_K = max(TOP_KS)  # always retrieve up to max k so all cuts are valid
+
     print(f"[eval] Loading index   : {index_dir}")
     payload = _load_index(index_dir)
     print(f"[eval] Loading queries : {queries_path}")
@@ -301,7 +355,7 @@ def evaluate(
     # --- deduplicate queries -------------------------------------------------
     query_map: dict[str, str] = {}
     for q in raw_queries:
-        qid = str(q.get("_id", "")).strip()
+        qid  = str(q.get("_id", "")).strip()
         text = str(q.get("text", "")).strip()
         if not qid or not text:
             continue
@@ -310,60 +364,45 @@ def evaluate(
 
     eval_ids = [qid for qid in rel_map if qid in query_map]
     total_candidates = len(eval_ids)
-    print(f"[eval] Queries total   : {len(raw_queries)}")
-    print(f"[eval] Queries unique  : {len(query_map)}")
-    print(f"[eval] Qrels rows      : {len(raw_qrels)}")
-    print(f"[eval] Qrels unique ids: {len(rel_map)}")
-    print(f"[eval] Evaluable       : {total_candidates}")
+    print(f"[eval] corpus_docs     : {len(payload['doc_ids'])}")
+    print(f"[eval] queries_loaded  : {len(query_map)}")
+    print(f"[eval] qrels_queries   : {len(rel_map)}")
+    print(f"[eval] evaluable       : {total_candidates}")
 
     if total_candidates == 0:
         raise ValueError("No evaluable queries found. Check queries/qrels alignment.")
 
-    # --- evaluation loop -----------------------------------------------------
-    total = 0
-    recall_sum = 0.0
-    hit_count = 0
-    mrr_sum = 0.0
+    # --- search + per-query metrics ------------------------------------------
+    times: list[float] = []
+    per_query_rows: list[dict[int, tuple[float, float, float, float]]] = []
 
-    for qid in eval_ids:
-        text = query_map[qid]
-        total += 1
-        preds = _search_raw(payload, text, k)
-        pred_ids = [doc_id for doc_id, _ in preds]
+    start_total = time.perf_counter()
+    for i, qid in enumerate(eval_ids, start=1):
+        t0 = time.perf_counter()
+        preds = _search_raw(payload, query_map[qid], FETCH_K)
+        times.append(time.perf_counter() - t0)
 
-        rel_docs = rel_map[qid]
-        retrieved_relevant = 0
-        first_rank = 0
-        for rank, doc_id in enumerate(pred_ids, start=1):
-            if doc_id in rel_docs:
-                retrieved_relevant += 1
-                if first_rank == 0:
-                    first_rank = rank
+        ranked_doc_ids = [doc_id for doc_id, _ in preds]
+        per_query_rows.append(compute_metrics(ranked_doc_ids, rel_map[qid]))
 
-        if rel_docs:
-            recall_sum += retrieved_relevant / len(rel_docs)
-        if retrieved_relevant > 0:
-            hit_count += 1
-        if first_rank > 0:
-            mrr_sum += 1.0 / first_rank
+        if log_every > 0 and (i % log_every == 0 or i == total_candidates):
+            print(f"[eval] {i}/{total_candidates} queries searched …")
 
-        if log_every > 0 and (total % log_every == 0 or total == total_candidates):
-            print(
-                f"[eval] {total}/{total_candidates} | "
-                f"Recall@{k}={recall_sum / total:.4f}  "
-                f"Hit@{k}={hit_count / total:.4f}  "
-                f"MRR@{k}={mrr_sum / total:.4f}"
-            )
+    total_time = time.perf_counter() - start_total
 
-    recall_at_k = recall_sum / total
-    hit_at_k = hit_count / total
-    mrr_at_k = mrr_sum / total
+    # --- aggregate -----------------------------------------------------------
+    metrics = aggregate_metrics(per_query_rows)
+    latency_ms = 1000.0 * (total_time / len(eval_ids))
+    p50_ms     = 1000.0 * statistics.median(times)
+    p95_ms     = 1000.0 * sorted(times)[max(0, int(0.95 * len(times)) - 1)]
 
-    print("-" * 50)
-    print(f"Queries evaluated : {total}")
-    print(f"Recall@{k}        : {recall_at_k:.4f}")
-    print(f"Hit@{k}           : {hit_at_k:.4f}")
-    print(f"MRR@{k}           : {mrr_at_k:.4f}")
+    # --- print tab-separated table (same format as evaluate_bm25.py) ---------
+    print("model\tlatency_ms\tp50_ms\tp95_ms\tR@1\tR@10\tR@100\tMRR@10\tnDCG@10")
+    print(
+        f"TF-IDF VSM\t{latency_ms:.2f}\t{p50_ms:.2f}\t{p95_ms:.2f}\t"
+        f"{metrics[1][0]:.4f}\t{metrics[10][0]:.4f}\t{metrics[100][0]:.4f}\t"
+        f"{metrics[10][2]:.4f}\t{metrics[10][3]:.4f}"
+    )
 
 
 # ---------------------------------------------------------------------------

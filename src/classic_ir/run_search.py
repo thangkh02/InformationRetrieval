@@ -37,6 +37,10 @@ def main() -> None:
     ]
     for query in sample_queries:
         print_results(f"BM25: {query}", engine.bm25_search(query, top_k=5))
+        print_results(
+            f"BM25 + title boost: {query}",
+            engine.fielded_bm25_search(query, top_k=5, title_weight=0.2, text_weight=1.0),
+        )
 
     print_results("Boolean: đất đai AND thừa kế", engine.boolean_search("đất đai AND thừa kế", top_k=5))
     print_results('Phrase: "quyền sử dụng đất"', engine.phrase_search('"quyền sử dụng đất"', top_k=5))

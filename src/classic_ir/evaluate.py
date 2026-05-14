@@ -123,6 +123,8 @@ def evaluate_method(
             results = engine.phrase_search_ranked(query.text, top_k=top_k)
         elif name == "Proximity NEAR/5 + BM25 rank":
             results = proximity_rank(engine, query.text, top_k, distance=5)
+        elif name == "BM25 + title boost":
+            results = engine.fielded_bm25_search(query.text, top_k=top_k, title_weight=0.2, text_weight=1.0)
         else:
             results = engine.bm25_search(query.text, top_k=top_k)
         done += 1
@@ -165,6 +167,7 @@ def main() -> None:
     queries = [query for query in read_queries(QUERIES_PATH) if query.query_id in qrels]
     methods = [
         "BM25",
+        "BM25 + title boost",
         "Phrase Search + BM25 rank",
         "Proximity NEAR/5 + BM25 rank",
     ]

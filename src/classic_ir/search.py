@@ -44,6 +44,28 @@ class ClassicSearchEngine:
         scored.sort(key=lambda item: (-item[1], item[0]))
         return self._format_results(scored[:top_k], query)
 
+    def fielded_bm25_search(
+        self,
+        query: str,
+        top_k: int = 10,
+        title_weight: float = 0.2,
+        text_weight: float = 1.0,
+    ) -> list[SearchResult]:
+        terms = query_terms(query)
+        if not terms:
+            return []
+
+        score_by_doc: dict[str, float] = {}
+        for term in terms:
+            for doc_id in self.index.inverted_index.get(term, {}):
+                score_by_doc[doc_id] = score_by_doc.get(doc_id, 0.0) + text_weight * self._bm25_term_score(term, doc_id)
+            for doc_id in self.index.title_inverted_index.get(term, {}):
+                score_by_doc[doc_id] = score_by_doc.get(doc_id, 0.0) + title_weight * self._title_bm25_term_score(term, doc_id)
+
+        scored = [(doc_id, score) for doc_id, score in score_by_doc.items() if score > 0]
+        scored.sort(key=lambda item: (-item[1], item[0]))
+        return self._format_results(scored[:top_k], query)
+
     def boolean_search(self, expression: str, top_k: int = 10) -> list[SearchResult]:
         doc_ids = self.boolean_doc_ids(expression)
         return self._format_doc_ids(sorted(doc_ids)[:top_k], expression)
@@ -166,6 +188,18 @@ class ClassicSearchEngine:
         idf = math.log(1 + (self.index.n_docs - df + 0.5) / (df + 0.5))
         dl = self.index.doc_len.get(doc_id, 0)
         denom = tf + self.k1 * (1 - self.b + self.b * dl / max(self.index.avgdl, 1e-9))
+        return idf * (tf * (self.k1 + 1)) / denom
+
+    def _title_bm25_term_score(self, term: str, doc_id: str) -> float:
+        tf = self.index.title_inverted_index.get(term, {}).get(doc_id, 0)
+        if tf <= 0:
+            return 0.0
+        df = self.index.title_df.get(term, 0)
+        if df <= 0:
+            return 0.0
+        idf = math.log(1 + (self.index.n_docs - df + 0.5) / (df + 0.5))
+        dl = self.index.title_doc_len.get(doc_id, 0)
+        denom = tf + self.k1 * (1 - self.b + self.b * dl / max(self.index.title_avgdl, 1e-9))
         return idf * (tf * (self.k1 + 1)) / denom
 
     def _docs_for_text(self, text: str) -> set[str]:

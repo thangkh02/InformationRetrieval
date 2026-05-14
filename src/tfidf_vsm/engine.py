@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import math
 import re
@@ -6,7 +6,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
-import joblib
+import pickle
 
 from .documents import Document, SearchResult
 
@@ -164,24 +164,24 @@ class TfidfVSMEngine:
 
         out = Path(model_dir)
         out.mkdir(parents=True, exist_ok=True)
-        joblib.dump(
-            {
-                "max_features": self.max_features,
-                "ngram_range": self.ngram_range,
-                "min_df": self.min_df,
-                "documents": self.documents,
-                "vocab": self.vocab,
-                "idf": self.idf,
-                "doc_vectors": self.doc_vectors,
-                "doc_norms": self.doc_norms,
-                "inverted_index": self.inverted_index,
-            },
-            out / "tfidf_vsm.joblib",
-        )
+        payload = {
+            "max_features": self.max_features,
+            "ngram_range": self.ngram_range,
+            "min_df": self.min_df,
+            "documents": self.documents,
+            "vocab": self.vocab,
+            "idf": self.idf,
+            "doc_vectors": self.doc_vectors,
+            "doc_norms": self.doc_norms,
+            "inverted_index": self.inverted_index,
+        }
+        with open(out / "tfidf_vsm.pkl", "wb") as f:
+            pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     @classmethod
     def load(cls, model_dir: str | Path) -> "TfidfVSMEngine":
-        payload = joblib.load(Path(model_dir) / "tfidf_vsm.joblib")
+        with open(Path(model_dir) / "tfidf_vsm.pkl", "rb") as f:
+            payload = pickle.load(f)
         engine = cls(
             max_features=payload.get("max_features", 200_000),
             ngram_range=tuple(payload.get("ngram_range", (1, 2))),

@@ -18,7 +18,7 @@ from text_utils import tokenize_underthesea_text
 
 
 class BM25SearchEngine:
-    def __init__(self, k1: float = 1.5, b: float = 0.75, champion_size: int = 8000) -> None:
+    def __init__(self, k1: float = 1.5, b: float = 0.75, champion_size: int = 6000) -> None:
         self.k1 = k1
         self.b = b
         self.champion_size = champion_size

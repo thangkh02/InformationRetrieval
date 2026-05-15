@@ -168,19 +168,19 @@ Module nay chi dung cho bo Zalo AI Legal Text Retrieval VN va artifact tokenized
 
 Build BM25 champion-list model mot lan:
 
-```bash
+```powershell
 python src/champion-list/champion_bm25/build_model.py --input data/zalo_ai_legal_text_retrieval_vn/corpus.jsonl --model-dir artifacts/bm25_legal_full --champion-size 9000
 ```
 
 Neu ban da co corpus tokenize san va khong muon tokenize lai, dung lenh nay:
 
-```bash
+```powershell
 python src/champion-list/champion_bm25/build_model.py --corpus-tokenized artifacts/bm25_underthesea/corpus_doc_id.jsonl --model-dir artifacts/bm25_legal_8000 --champion-size 8000
 ```
 
 Sau do inference truc tiep bang query text:
 
-```bash
+```powershell
 python src/champion-list/champion_bm25/search.py --model-dir artifacts/bm25_legal_full --query "Mức phạt khi quay đầu xe ô tô trên đường cao tốc" --top-k 5
 ```
 
@@ -191,16 +191,28 @@ Luong nay hoat dong nhu sau:
 
 ## Evaluate Champion BM25
 
-Neu muon do metric cua BM25 champion-list dung dung model inference da build san:
+Neu muon do metric cua BM25 champion-list dung dung model inference da build san tren tap test:
 
 ```powershell
-python src/champion-list/champion_bm25/evaluate.py --model-dir artifacts/bm25_legal_6000 --queries-tokenized artifacts/bm25_underthesea/queries_test_tokens.jsonl --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/test.jsonl --mode both 
+python src/champion-list/champion_bm25/evaluate.py --model-dir artifacts/bm25_legal_6000 --queries-tokenized artifacts/bm25_underthesea/queries_test_tokens.jsonl --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/test.jsonl --mode champion
 ```
 
 Neu muon evaluate tren tap train:
 
 ```powershell
-python src/champion-list/champion_bm25/evaluate.py --model-dir artifacts/bm25_legal_full --queries-raw data/zalo_ai_legal_text_retrieval_vn/queries_unique.jsonl --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/train.jsonl --mode both
+python src/champion-list/champion_bm25/evaluate.py --model-dir artifacts/bm25_legal_6000 --queries-raw data/zalo_ai_legal_text_retrieval_vn/queries_unique.jsonl --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/train.jsonl --mode champion
+```
+
+Neu muon so sanh BM25 full va BM25 champion tren test:
+
+```powershell
+python src/champion-list/champion_bm25/evaluate.py --model-dir artifacts/bm25_legal_6000 --queries-tokenized artifacts/bm25_underthesea/queries_test_tokens.jsonl --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/test.jsonl --mode both
+```
+
+Neu muon so sanh BM25 full va BM25 champion tren train:
+
+```powershell
+python src/champion-list/champion_bm25/evaluate.py --model-dir artifacts/bm25_legal_6000 --queries-raw data/zalo_ai_legal_text_retrieval_vn/queries_unique.jsonl --qrels data/zalo_ai_legal_text_retrieval_vn/qrels/train.jsonl --mode both
 ```
 
 Ghi chu:

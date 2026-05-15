@@ -29,6 +29,22 @@ class ClassicSearchEngine:
     def load(cls, index_dir: str, k1: float = 1.5, b: float = 0.75) -> "ClassicSearchEngine":
         return cls(ClassicIndex.load(index_dir), k1=k1, b=b)
 
+    @classmethod
+    def load_from_bm25_model(
+        cls,
+        model_dir: str,
+        tokenized_corpus_path: str | None = None,
+        positional_index_path: str | None = None,
+        k1: float = 1.5,
+        b: float = 0.75,
+    ) -> "ClassicSearchEngine":
+        index = ClassicIndex.from_bm25_model(
+            model_dir,
+            tokenized_corpus_path=tokenized_corpus_path,
+            positional_index_path=positional_index_path,
+        )
+        return cls(index, k1=k1, b=b)
+
     def bm25_search(self, query: str, top_k: int = 10) -> list[SearchResult]:
         terms = query_terms(query)
         if not terms:

@@ -22,6 +22,8 @@ DATA_DIR = ROOT / "data" / "zalo_ai_legal_text_retrieval_vn"
 QUERIES_PATH = DATA_DIR / "queries_no_question_mark.jsonl"
 QRELS_PATH = DATA_DIR / "qrels" / "test.jsonl"
 INDEX_DIR = ROOT / "artifacts" / "classic_ir"
+BM25_MODEL_DIR = ROOT / "artifacts" / "bm25_legal_full"
+TOKENIZED_CORPUS_PATH = ROOT / "artifacts" / "bm25_underthesea" / "corpus_doc_id.jsonl"
 
 
 def group_qrels(path: Path) -> dict[str, set[str]]:
@@ -162,7 +164,11 @@ def print_table(rows: list[dict[str, float | str]]) -> None:
 
 
 def main() -> None:
-    engine = ClassicSearchEngine.load(str(INDEX_DIR))
+    engine = ClassicSearchEngine.load_from_bm25_model(
+        str(BM25_MODEL_DIR),
+        tokenized_corpus_path=str(TOKENIZED_CORPUS_PATH),
+        positional_index_path=str(INDEX_DIR / "positional_index.pkl"),
+    )
     qrels = group_qrels(QRELS_PATH)
     queries = [query for query in read_queries(QUERIES_PATH) if query.query_id in qrels]
     methods = [

@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
+import json
 from pathlib import Path
 import pickle
+import sys
 
-from .data_loader import Document
+import joblib
+
 from .preprocess import tokenize
+
+
+CHAMPION_ROOT = Path(__file__).resolve().parents[1] / "champion-list"
+if str(CHAMPION_ROOT) not in sys.path:
+    sys.path.insert(0, str(CHAMPION_ROOT))
 
 
 @dataclass(slots=True)
@@ -24,52 +32,35 @@ class ClassicIndex:
     n_docs: int
 
     @classmethod
-    def build(cls, documents: list[Document]) -> "ClassicIndex":
-        inverted: dict[str, dict[str, int]] = defaultdict(dict)
-        positional: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
-        title_inverted: dict[str, dict[str, int]] = defaultdict(dict)
-        title_doc_len: dict[str, int] = {}
-        doc_len: dict[str, int] = {}
-        doc_store: dict[str, dict[str, str]] = {}
+    def from_bm25_model(
+        cls,
+        model_dir: str | Path,
+        tokenized_corpus_path: str | Path | None = None,
+        positional_index_path: str | Path | None = None,
+    ) -> "ClassicIndex":
+        payload = _load_bm25_payload(model_dir)
+        doc_ids = [str(doc.doc_id) for doc in payload["documents"]]
+        positional = _load_or_build_positional_index(positional_index_path, tokenized_corpus_path)
 
-        for doc in documents:
-            full_text = " ".join(part for part in [doc.title, doc.text] if part)
-            tokens = tokenize(full_text)
-            title_tokens = tokenize(doc.title)
-            doc_len[doc.doc_id] = len(tokens)
-            title_doc_len[doc.doc_id] = len(title_tokens)
-            doc_store[doc.doc_id] = asdict(doc)
-
-            counts = Counter(tokens)
-            for term, tf in counts.items():
-                inverted[term][doc.doc_id] = int(tf)
-            for pos, term in enumerate(tokens):
-                positional[term][doc.doc_id].append(pos)
-            title_counts = Counter(title_tokens)
-            for term, tf in title_counts.items():
-                title_inverted[term][doc.doc_id] = int(tf)
-
-        n_docs = len(documents)
-        avgdl = sum(doc_len.values()) / n_docs if n_docs else 0.0
-        title_avgdl = sum(title_doc_len.values()) / n_docs if n_docs else 0.0
-        frozen_inverted = {term: dict(postings) for term, postings in inverted.items()}
-        frozen_positional = {
-            term: {doc_id: positions for doc_id, positions in postings.items()}
-            for term, postings in positional.items()
+        inverted = _posting_lists_to_doc_ids(payload["inverted_index"], doc_ids)
+        title_inverted, title_df, title_doc_len, title_avgdl = _build_title_index(payload["documents"])
+        doc_store = {
+            str(doc.doc_id): {"doc_id": str(doc.doc_id), "title": doc.title, "text": doc.content}
+            for doc in payload["documents"]
         }
-        frozen_title_inverted = {term: dict(postings) for term, postings in title_inverted.items()}
+
         return cls(
-            inverted_index=frozen_inverted,
-            positional_index=frozen_positional,
-            title_inverted_index=frozen_title_inverted,
-            title_df={term: len(postings) for term, postings in frozen_title_inverted.items()},
+            inverted_index=inverted,
+            positional_index=positional,
+            title_inverted_index=title_inverted,
+            title_df=title_df,
             title_doc_len=title_doc_len,
             title_avgdl=title_avgdl,
-            df={term: len(postings) for term, postings in frozen_inverted.items()},
-            doc_len=doc_len,
+            df={term: len(postings) for term, postings in inverted.items()},
+            doc_len=dict(zip(doc_ids, payload["doc_lengths"], strict=True)),
             doc_store=doc_store,
-            avgdl=avgdl,
-            n_docs=n_docs,
+            avgdl=float(payload["avgdl"]),
+            n_docs=len(doc_ids),
         )
 
     def save(self, output_dir: str | Path) -> None:
@@ -98,6 +89,7 @@ class ClassicIndex:
             title_avgdl = float(meta.get("title_avgdl", 0.0))
         else:
             title_inverted, title_df, title_doc_len, title_avgdl = _build_title_index_from_store(doc_store)
+
         return cls(
             inverted_index=_load(path / "inverted_index.pkl"),
             positional_index=_load(path / "positional_index.pkl"),
@@ -113,14 +105,59 @@ class ClassicIndex:
         )
 
 
-def _dump(obj: object, path: Path) -> None:
-    with path.open("wb") as f:
-        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+def _load_bm25_payload(model_dir: str | Path) -> dict:
+    return joblib.load(Path(model_dir) / "bm25_model.joblib")
 
 
-def _load(path: Path):
-    with path.open("rb") as f:
-        return pickle.load(f)
+def _posting_lists_to_doc_ids(
+    inverted_index: dict[str, list[tuple[int, int]]],
+    doc_ids: list[str],
+) -> dict[str, dict[str, int]]:
+    return {
+        term: {doc_ids[doc_idx]: int(tf) for doc_idx, tf in posting_list}
+        for term, posting_list in inverted_index.items()
+    }
+
+
+def _load_or_build_positional_index(
+    positional_index_path: str | Path | None,
+    tokenized_corpus_path: str | Path | None,
+) -> dict[str, dict[str, list[int]]]:
+    if positional_index_path and Path(positional_index_path).exists():
+        return _load(Path(positional_index_path))
+    if tokenized_corpus_path:
+        return build_positional_index_from_tokens(tokenized_corpus_path)
+    return {}
+
+
+def build_positional_index_from_tokens(path: str | Path) -> dict[str, dict[str, list[int]]]:
+    positional: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
+    with Path(path).open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            item = json.loads(line)
+            doc_id = str(item.get("doc_id", item.get("id", item.get("_id"))))
+            tokens = [str(token) for token in item.get("tokens", []) if str(token).strip()]
+            for pos, token in enumerate(tokens):
+                positional[token][doc_id].append(pos)
+    return {term: dict(postings) for term, postings in positional.items()}
+
+
+def _build_title_index(documents) -> tuple[dict[str, dict[str, int]], dict[str, int], dict[str, int], float]:
+    title_inverted: dict[str, dict[str, int]] = defaultdict(dict)
+    title_doc_len: dict[str, int] = {}
+    for doc in documents:
+        doc_id = str(doc.doc_id)
+        tokens = tokenize(doc.title)
+        title_doc_len[doc_id] = len(tokens)
+        for term, tf in Counter(tokens).items():
+            title_inverted[term][doc_id] = int(tf)
+
+    frozen = {term: dict(postings) for term, postings in title_inverted.items()}
+    n_docs = len(documents)
+    avgdl = sum(title_doc_len.values()) / n_docs if n_docs else 0.0
+    return frozen, {term: len(postings) for term, postings in frozen.items()}, title_doc_len, avgdl
 
 
 def _build_title_index_from_store(
@@ -133,7 +170,18 @@ def _build_title_index_from_store(
         title_doc_len[doc_id] = len(tokens)
         for term, tf in Counter(tokens).items():
             title_inverted[term][doc_id] = int(tf)
+
     frozen = {term: dict(postings) for term, postings in title_inverted.items()}
     n_docs = len(doc_store)
     avgdl = sum(title_doc_len.values()) / n_docs if n_docs else 0.0
     return frozen, {term: len(postings) for term, postings in frozen.items()}, title_doc_len, avgdl
+
+
+def _dump(obj: object, path: Path) -> None:
+    with path.open("wb") as f:
+        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def _load(path: Path):
+    with path.open("rb") as f:
+        return pickle.load(f)

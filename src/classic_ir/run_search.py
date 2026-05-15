@@ -15,6 +15,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 ROOT = Path(__file__).resolve().parents[2]
 INDEX_DIR = ROOT / "artifacts" / "classic_ir"
+BM25_MODEL_DIR = ROOT / "artifacts" / "bm25_legal_full"
+TOKENIZED_CORPUS_PATH = ROOT / "artifacts" / "bm25_underthesea" / "corpus_doc_id.jsonl"
 
 
 def print_results(label: str, results) -> None:
@@ -29,7 +31,11 @@ def print_results(label: str, results) -> None:
 
 
 def main() -> None:
-    engine = ClassicSearchEngine.load(str(INDEX_DIR))
+    engine = ClassicSearchEngine.load_from_bm25_model(
+        str(BM25_MODEL_DIR),
+        tokenized_corpus_path=str(TOKENIZED_CORPUS_PATH),
+        positional_index_path=str(INDEX_DIR / "positional_index.pkl"),
+    )
 
     sample_queries = [
         "quyền sử dụng đất",
